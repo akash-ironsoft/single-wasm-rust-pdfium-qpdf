@@ -1,17 +1,20 @@
 # Makefile for auto-pqdfium-rs
 
-.PHONY: help build-web serve clean test example
+.PHONY: help prepare-assets build-web serve clean
 
 # Default target
 help:
 	@echo "PDFium WASM Build Targets:"
 	@echo ""
-	@echo "  make build-web    Build WASM module for web"
-	@echo "  make serve        Start web server (builds if needed)"
-	@echo "  make clean        Clean build artifacts"
-	@echo "  make test         Run tests"
-	@echo "  make example      Run native example"
+	@echo "  make prepare-assets   Prepare assets from PDFium workspace"
+	@echo "  make build-web        Build WASM module for web"
+	@echo "  make serve            Start web server (builds if needed)"
+	@echo "  make clean            Clean build artifacts"
 	@echo ""
+
+# Prepare assets from PDFium workspace
+prepare-assets:
+	@./prepare-assets.sh
 
 # Build WASM for web
 build-web:
@@ -31,11 +34,3 @@ clean:
 	rm -f web/auto_pqdfium_rs.wasm
 	rm -f web/auto_pqdfium_rs.js
 	@echo "✓ Cleaned build artifacts"
-
-# Run tests
-test:
-	cargo test --release
-
-# Run native example
-example:
-	cargo run --example basic_usage --release
