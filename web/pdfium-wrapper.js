@@ -58,23 +58,31 @@ class PdfiumWasm {
       throw new Error('PDFium not initialized. Call init() first.');
     }
 
+    let pdfPtr = null;
     try {
       // Allocate memory for PDF data in WASM
-      const pdfPtr = this.Module._malloc(pdfBytes.length);
+      pdfPtr = this.Module._malloc(pdfBytes.length);
       if (!pdfPtr) {
         throw new Error('Failed to allocate memory');
       }
 
-      // Copy PDF bytes to WASM memory
-      // Access heap through HEAP8/HEAPU8 view
-      const heapView = new Uint8Array(this.Module.HEAPU8.buffer, pdfPtr, pdfBytes.length);
-      heapView.set(pdfBytes);
+      // Copy PDF bytes to WASM memory using Emscripten's writeArrayToMemory
+      // or by directly writing to HEAP8
+      if (this.Module.writeArrayToMemory) {
+        this.Module.writeArrayToMemory(pdfBytes, pdfPtr);
+      } else {
+        // Fallback: write directly to HEAP8
+        for (let i = 0; i < pdfBytes.length; i++) {
+          this.Module.HEAP8[pdfPtr + i] = pdfBytes[i];
+        }
+      }
 
       // Call extract_text function
       const resultPtr = this.Module._pdfium_wasm_extract_text(pdfPtr, pdfBytes.length);
 
       // Free the PDF buffer
       this.Module._free(pdfPtr);
+      pdfPtr = null;
 
       if (!resultPtr) {
         throw new Error('Text extraction failed - PDF may be corrupted or encrypted');
@@ -88,6 +96,10 @@ class PdfiumWasm {
 
       return text;
     } catch (error) {
+      // Clean up if we allocated memory
+      if (pdfPtr !== null) {
+        this.Module._free(pdfPtr);
+      }
       console.error('Error extracting text:', error);
       throw error;
     }
@@ -103,22 +115,30 @@ class PdfiumWasm {
       throw new Error('PDFium not initialized. Call init() first.');
     }
 
+    let pdfPtr = null;
     try {
       // Allocate memory for PDF data
-      const pdfPtr = this.Module._malloc(pdfBytes.length);
+      pdfPtr = this.Module._malloc(pdfBytes.length);
       if (!pdfPtr) {
         throw new Error('Failed to allocate memory');
       }
 
-      // Copy PDF bytes to WASM memory
-      const heapView = new Uint8Array(this.Module.HEAPU8.buffer, pdfPtr, pdfBytes.length);
-      heapView.set(pdfBytes);
+      // Copy PDF bytes to WASM memory using Emscripten's writeArrayToMemory
+      if (this.Module.writeArrayToMemory) {
+        this.Module.writeArrayToMemory(pdfBytes, pdfPtr);
+      } else {
+        // Fallback: write directly to HEAP8
+        for (let i = 0; i < pdfBytes.length; i++) {
+          this.Module.HEAP8[pdfPtr + i] = pdfBytes[i];
+        }
+      }
 
       // Call pdf_to_json function
       const resultPtr = this.Module._pdfium_wasm_pdf_to_json(pdfPtr, pdfBytes.length);
 
       // Free the PDF buffer
       this.Module._free(pdfPtr);
+      pdfPtr = null;
 
       if (!resultPtr) {
         throw new Error('PDF to JSON conversion failed');
@@ -133,6 +153,10 @@ class PdfiumWasm {
       // Parse and return JSON
       return JSON.parse(jsonStr);
     } catch (error) {
+      // Clean up if we allocated memory
+      if (pdfPtr !== null) {
+        this.Module._free(pdfPtr);
+      }
       console.error('Error converting PDF to JSON:', error);
       throw error;
     }
