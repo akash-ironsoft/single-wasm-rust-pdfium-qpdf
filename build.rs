@@ -1,4 +1,8 @@
 fn main() {
+    let target = std::env::var("TARGET").unwrap();
+    let is_wasm_emscripten = target == "wasm32-unknown-emscripten";
+    let is_wasm_unknown = target == "wasm32-unknown-unknown";
+
     // Get PDFium directory from environment or use default
     let pdfium_dir = std::env::var("PDFIUM_DIR").unwrap_or_else(|_| {
         "/home/akash/Dev/ironsoft/iron-universal/Universal.PdfEditor/pdfium-workspace/Universal.Pdfium".to_string()
@@ -8,7 +12,54 @@ fn main() {
     println!("cargo:rerun-if-changed=src/bridge.cpp");
     println!("cargo:rerun-if-changed=src/bridge.h");
     println!("cargo:rerun-if-changed=src/lib.rs");
-    println!("cargo:rerun-if-changed=CMakeLists.txt");
+
+    if is_wasm_emscripten {
+        build_for_wasm(&pdfium_dir);
+    } else if is_wasm_unknown {
+        build_for_wasm_unknown(&pdfium_dir);
+    } else {
+        println!("cargo:rerun-if-changed=CMakeLists.txt");
+        build_for_native(&pdfium_dir);
+    }
+}
+
+fn build_for_wasm_unknown(_pdfium_dir: &str) {
+    println!("cargo:warning=Building for wasm32-unknown-unknown target");
+    println!("cargo:warning=Note: C++ libraries cannot be linked with wasm32-unknown-unknown");
+    println!("cargo:warning=The module will build but PDF functions will not work without C++ runtime");
+
+    // For wasm32-unknown-unknown, we can't link C++ libraries
+    // The build will succeed but functions will be stubs
+    // This is mainly for demonstrating wasm-bindgen integration
+}
+
+fn build_for_wasm(pdfium_dir: &str) {
+    println!("cargo:warning=Building for WebAssembly target");
+
+    // Use Emscripten-built libraries
+    let wasm_lib_dir = format!("{}/out/emscripten-wasm-release/obj", pdfium_dir);
+
+    // Link PDFium and QPDF static libraries for WASM
+    println!("cargo:rustc-link-search=native={}", wasm_lib_dir);
+    println!("cargo:rustc-link-search=native={}/third_party/Universal.Qpdf", wasm_lib_dir);
+    println!("cargo:rustc-link-lib=static=pdfium");
+    println!("cargo:rustc-link-lib=static=qpdf");
+
+    // Compile bridge.cpp for WASM using cc crate directly (no autocxx needed)
+    // Let em++ use its default include paths for system headers
+    cc::Build::new()
+        .cpp(true)
+        .file("src/bridge.cpp")
+        .include("src")
+        .include(format!("{}/public", pdfium_dir))
+        .include(format!("{}/third_party/Universal.Qpdf/include", pdfium_dir))
+        .flag_if_supported("-std=c++17")
+        .flag_if_supported("-Wno-unused-parameter")
+        .compile("pdfium_bridge");
+}
+
+fn build_for_native(pdfium_dir: &str) {
+    println!("cargo:warning=Building for native target");
 
     // Build the C++ bridge library using CMake
     let dst = cmake::Config::new(".")

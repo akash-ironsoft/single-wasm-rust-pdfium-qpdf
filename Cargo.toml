@@ -14,7 +14,7 @@ autocxx = "0.27"
 cxx = "1.0"
 thiserror = "1.0"
 
-# WebAssembly support (optional)
+# WebAssembly support
 wasm-bindgen = { version = "0.2", optional = true }
 js-sys = { version = "0.3", optional = true }
 
@@ -31,9 +31,11 @@ default = []
 wasm = ["wasm-bindgen", "js-sys"]
 
 [profile.release]
-opt-level = 3
+opt-level = "z"  # Optimize for size (important for WASM)
 lto = true
 codegen-units = 1
+strip = true
+# Note: panic = "abort" removed for wasm32-unknown-emscripten compatibility
 
 [profile.release.package."*"]
 opt-level = 3

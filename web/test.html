@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDFium WASM Test</title>
+    <style>
+        body {
+            font-family: system-ui;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>PDFium WASM Module Test</h1>
+    <div id="log" class="log">Loading...</div>
+
+    <script src="auto_pqdfium_rs.js"></script>
+    <script src="pdfium-wrapper.js"></script>
+    <script>
+        const log = document.getElementById('log');
+
+        function addLog(message, type = 'info') {
+            const span = document.createElement('span');
+            span.className = type;
+            span.textContent = message + '\n';
+            log.appendChild(span);
+        }
+
+        async function runTests() {
+            try {
+                log.textContent = '';
+                addLog('🔄 Starting tests...', 'info');
+
+                // Test 1: Create instance
+                addLog('\n1. Creating PdfiumWasm instance...', 'info');
+                const pdfium = new PdfiumWasm();
+                addLog('✅ Instance created', 'success');
+
+                // Test 2: Initialize
+                addLog('\n2. Initializing PDFium...', 'info');
+                await pdfium.init();
+                addLog('✅ PDFium initialized successfully!', 'success');
+
+                // Test 3: Load sample PDF
+                addLog('\n3. Loading sample.pdf...', 'info');
+                const response = await fetch('sample.pdf');
+                const arrayBuffer = await response.arrayBuffer();
+                const pdfBytes = new Uint8Array(arrayBuffer);
+                addLog(`✅ Loaded ${pdfBytes.length} bytes`, 'success');
+
+                // Test 4: Extract text
+                addLog('\n4. Extracting text...', 'info');
+                const startTime = performance.now();
+                const text = await pdfium.extractText(pdfBytes);
+                const endTime = performance.now();
+                addLog(`✅ Extracted ${text.length} characters in ${Math.round(endTime - startTime)}ms`, 'success');
+                addLog(`Text preview: "${text.substring(0, 100)}..."`, 'info');
+
+                // Test 5: Convert to JSON
+                addLog('\n5. Converting to JSON...', 'info');
+                const startTime2 = performance.now();
+                const json = await pdfium.pdfToJson(pdfBytes);
+                const endTime2 = performance.now();
+                addLog(`✅ Converted in ${Math.round(endTime2 - startTime2)}ms`, 'success');
+                addLog(`JSON keys: ${Object.keys(json).join(', ')}`, 'info');
+
+                // Test 6: Cleanup
+                addLog('\n6. Cleaning up...', 'info');
+                pdfium.cleanup();
+                addLog('✅ Cleanup complete', 'success');
+
+                addLog('\n\n🎉 ALL TESTS PASSED!', 'success');
+
+            } catch (error) {
+                addLog(`\n❌ ERROR: ${error.message}`, 'error');
+                addLog(error.stack, 'error');
+            }
+        }
+
+        // Run tests when page loads
+        window.onload = runTests;
+    </script>
+</body>
+</html>

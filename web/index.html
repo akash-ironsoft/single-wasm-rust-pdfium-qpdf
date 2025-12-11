@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDFium WASM Demo</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+
+        .upload-area {
+            border: 2px dashed #667eea;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f2ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #764ba2;
+            background: #e8eaff;
+            transform: scale(1.02);
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s;
+            margin-top: 15px;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .output {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .output:empty::before {
+            content: 'Output will appear here...';
+            color: #999;
+            font-style: italic;
+        }
+
+        .status {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #667eea;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .file-info {
+            background: #f0f2ff;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-box {
+            background: #f0f2ff;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>PDFium WASM Demo</h1>
+            <p class="subtitle">Extract text and convert PDFs to JSON using WebAssembly</p>
+        </header>
+
+        <div class="main-content">
+            <div class="card">
+                <h2>Upload PDF</h2>
+                <div id="status"></div>
+                <div class="upload-area" id="uploadArea">
+                    <input type="file" id="fileInput" accept=".pdf">
+                    <svg width="48" height="48" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 15px; display: block;">
+                        <path d="M21 15v4a2 2 0 0 0 2 2h4"></path>
+                        <path d="M17 21h-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2h-4"></path>
+                    </svg>
+                    <p style="color: #667eea; font-weight: 600;">Click to upload or drag and drop</p>
+                    <p style="color: #999; font-size: 13px; margin-top: 8px;">PDF files only</p>
+                </div>
+                <div id="fileInfo"></div>
+                <button id="extractBtn" disabled>Extract Text</button>
+                <button id="jsonBtn" disabled>Convert to JSON</button>
+
+                <div class="stats" style="margin-top: 20px; display: none;" id="stats">
+                    <div class="stat-box">
+                        <div class="stat-value" id="fileSize">0</div>
+                        <div class="stat-label">File Size (KB)</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="textLength">0</div>
+                        <div class="stat-label">Characters</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="processTime">0</div>
+                        <div class="stat-label">Time (ms)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Output</h2>
+                <div class="output" id="output"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Emscripten-generated module first -->
+    <script src="auto_pqdfium_rs.js"></script>
+    <!-- Then load our wrapper -->
+    <script src="pdfium-wrapper.js"></script>
+    <script>
+        let pdfium = null;
+        let currentPdfBytes = null;
+
+        // Initialize PDFium WASM
+        async function initPdfium() {
+            try {
+                showStatus('Initializing PDFium WASM...', 'info');
+                pdfium = new PdfiumWasm();
+                await pdfium.init();
+                showStatus('PDFium initialized successfully!', 'success');
+            } catch (error) {
+                showStatus('Failed to initialize: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.className = 'status ' + type;
+            status.textContent = message;
+            status.style.display = 'block';
+        }
+
+        // File upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const extractBtn = document.getElementById('extractBtn');
+        const jsonBtn = document.getElementById('jsonBtn');
+        const output = document.getElementById('output');
+
+        uploadArea.onclick = () => fileInput.click();
+
+        uploadArea.ondragover = (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        };
+
+        uploadArea.ondragleave = () => {
+            uploadArea.classList.remove('dragover');
+        };
+
+        uploadArea.ondrop = (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'application/pdf') {
+                handleFile(file);
+            } else {
+                showStatus('Please upload a PDF file', 'error');
+            }
+        };
+
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        };
+
+        async function handleFile(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                currentPdfBytes = new Uint8Array(arrayBuffer);
+
+                document.getElementById('fileInfo').innerHTML = `
+                    <div class="file-info">
+                        <strong>File:</strong> ${file.name}<br>
+                        <strong>Size:</strong> ${(file.size / 1024).toFixed(2)} KB
+                    </div>
+                `;
+
+                document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(2);
+                document.getElementById('stats').style.display = 'grid';
+
+                extractBtn.disabled = false;
+                jsonBtn.disabled = false;
+                output.textContent = '';
+                showStatus('PDF loaded successfully!', 'success');
+            } catch (error) {
+                showStatus('Error loading file: ' + error.message, 'error');
+            }
+        }
+
+        extractBtn.onclick = async () => {
+            if (!currentPdfBytes) return;
+
+            try {
+                extractBtn.disabled = true;
+                showStatus('Extracting text...', 'info');
+                output.innerHTML = '<div class="loading"></div> Processing...';
+
+                const startTime = performance.now();
+                const text = await pdfium.extractText(currentPdfBytes);
+                const endTime = performance.now();
+
+                output.textContent = text;
+                document.getElementById('textLength').textContent = text.length.toLocaleString();
+                document.getElementById('processTime').textContent = Math.round(endTime - startTime);
+                showStatus(`Extracted ${text.length} characters`, 'success');
+            } catch (error) {
+                output.textContent = 'Error: ' + error.message;
+                showStatus('Extraction failed: ' + error.message, 'error');
+            } finally {
+                extractBtn.disabled = false;
+            }
+        };
+
+        jsonBtn.onclick = async () => {
+            if (!currentPdfBytes) return;
+
+            try {
+                jsonBtn.disabled = true;
+                showStatus('Converting to JSON...', 'info');
+                output.innerHTML = '<div class="loading"></div> Processing...';
+
+                const startTime = performance.now();
+                const json = await pdfium.pdfToJson(currentPdfBytes);
+                const endTime = performance.now();
+
+                const jsonStr = JSON.stringify(json, null, 2);
+                output.textContent = jsonStr;
+                document.getElementById('textLength').textContent = jsonStr.length.toLocaleString();
+                document.getElementById('processTime').textContent = Math.round(endTime - startTime);
+                showStatus('JSON conversion complete', 'success');
+            } catch (error) {
+                output.textContent = 'Error: ' + error.message;
+                showStatus('Conversion failed: ' + error.message, 'error');
+            } finally {
+                jsonBtn.disabled = false;
+            }
+        };
+
+        // Initialize on load
+        window.onload = initPdfium;
+
+        // Cleanup on unload
+        window.onbeforeunload = () => {
+            if (pdfium) {
+                pdfium.cleanup();
+            }
+        };
+    </script>
+</body>
+</html>

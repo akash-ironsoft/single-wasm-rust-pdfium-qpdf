@@ -1,0 +1,13 @@
+[target.wasm32-unknown-emscripten]
+rustflags = [
+    "-C", "link-arg=-sERROR_ON_UNDEFINED_SYMBOLS=0",
+    "-C", "link-arg=-sALLOW_MEMORY_GROWTH=1",
+    "-C", "link-arg=-sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_malloc,_free",
+    "-C", "link-arg=-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue",
+    "-C", "link-arg=-sMODULARIZE=1",
+    "-C", "link-arg=-sEXPORT_NAME=createPdfiumModule",
+    "-C", "link-arg=-sEXPORT_ES6=0",
+    "-C", "link-arg=-sENVIRONMENT=web",
+    "-C", "link-arg=-sSINGLE_FILE=0",
+    "-C", "link-arg=--no-entry",
+]
