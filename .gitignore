@@ -1,2 +1,8 @@
 target
 build
+pkg
+*.log
+*.tmp
+*~
+*.swp
+.DS_Store
