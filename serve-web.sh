@@ -36,4 +36,4 @@ echo ""
 echo "Press Ctrl+C to stop"
 echo ""
 
-cd web && python3 server.py
+cd web && python -m http.server

@@ -6,3 +6,6 @@ pkg
 *~
 *.swp
 .DS_Store
+
+# Keep assets directory but ignore large .a files if needed
+# assets/*.a

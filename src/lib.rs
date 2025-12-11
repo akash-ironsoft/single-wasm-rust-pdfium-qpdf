@@ -29,15 +29,7 @@ use std::sync::Once;
 mod error;
 pub use error::{PdfiumError, Result};
 
-#[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::*;
-
-#[cfg(feature = "wasm")]
-impl From<PdfiumError> for JsValue {
-    fn from(err: PdfiumError) -> Self {
-        JsValue::from_str(&err.to_string())
-    }
-}
+// WASM-only project - no conditional compilation needed
 
 // Direct FFI declarations for the C bridge (no autocxx needed for extern "C")
 mod ffi {
