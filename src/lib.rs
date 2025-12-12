@@ -1,37 +1,7 @@
-//! # auto-pqdfium-rs
-//!
-//! A minimal, safe Rust wrapper for PDFium + QPDF using autocxx.
-//!
-//! This crate provides two main functionalities:
-//! - Text extraction from PDFs via PDFium
-//! - PDF to JSON conversion via QPDF
-//!
-//! ## Example
-//!
-//! ```no_run
-//! use auto_pqdfium_rs::{extract_text, pdf_to_json};
-//!
-//! // Load PDF bytes (from file, network, etc.)
-//! let pdf_bytes = std::fs::read("sample.pdf").unwrap();
-//!
-//! // Extract text
-//! let text = extract_text(&pdf_bytes).unwrap();
-//! println!("Extracted text: {}", text);
-//!
-//! // Convert to JSON
-//! let json = pdf_to_json(&pdf_bytes).unwrap();
-//! println!("PDF as JSON: {}", json);
-//! ```
-
 use std::sync::Once;
-
-// Error types
 mod error;
 pub use error::{PdfiumError, Result};
 
-// WASM-only project - no conditional compilation needed
-
-// Direct FFI declarations for the C bridge (no autocxx needed for extern "C")
 mod ffi {
     extern "C" {
         pub fn pdfium_bridge_initialize() -> i32;
@@ -50,10 +20,6 @@ mod ffi {
 
 static INIT: Once = Once::new();
 
-/// Initialize PDFium library
-///
-/// This is called automatically by the other functions, but you can call it
-/// explicitly if you want to ensure initialization happens at a specific time.
 pub fn initialize() -> Result<()> {
     let mut init_result = Ok(());
 
@@ -92,15 +58,6 @@ pub extern "C" fn pdfium_wasm_initialize() -> i32 {
 ///
 /// Returns `PdfiumError::InvalidData` if the input is empty.
 /// Returns `PdfiumError::ExtractionFailed` if the PDF cannot be processed.
-///
-/// # Example
-///
-/// ```no_run
-/// use auto_pqdfium_rs::extract_text;
-///
-/// let pdf_bytes = std::fs::read("document.pdf").unwrap();
-/// let text = extract_text(&pdf_bytes).unwrap();
-/// println!("Text: {}", text);
 /// ```
 pub fn extract_text(pdf_bytes: &[u8]) -> Result<String> {
     // Ensure PDFium is initialized
@@ -170,15 +127,6 @@ pub extern "C" fn pdfium_wasm_extract_text(
 ///
 /// Returns `PdfiumError::InvalidData` if the input is empty.
 /// Returns `PdfiumError::ConversionFailed` if the PDF cannot be converted.
-///
-/// # Example
-///
-/// ```no_run
-/// use auto_pqdfium_rs::pdf_to_json;
-///
-/// let pdf_bytes = std::fs::read("document.pdf").unwrap();
-/// let json = pdf_to_json(&pdf_bytes).unwrap();
-/// println!("JSON: {}", json);
 /// ```
 pub fn pdf_to_json(pdf_bytes: &[u8]) -> Result<String> {
     // Ensure PDFium is initialized
