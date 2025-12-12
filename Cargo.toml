@@ -13,7 +13,7 @@ crate-type = ["staticlib"]
 thiserror = "1.0"
 
 [build-dependencies]
-cc = "1.0"
+cc = "1.0"  # Needed to compile minimal C++ stub for C++ runtime support
 
 [profile.release]
 opt-level = "z"  # Optimize for size (important for WASM)

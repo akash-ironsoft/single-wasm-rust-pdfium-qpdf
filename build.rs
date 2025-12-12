@@ -1,6 +1,4 @@
 fn main() {
-    println!("cargo:rerun-if-changed=src/bridge.cpp");
-    println!("cargo:rerun-if-changed=src/bridge.h");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=assets/libpdfium.a");
     println!("cargo:rerun-if-changed=assets/libqpdf.a");
@@ -23,19 +21,17 @@ fn main() {
     println!("cargo:rustc-link-lib=static=pdfium");
     println!("cargo:rustc-link-lib=static=qpdf");
 
-    // Compile bridge.cpp for WASM
+    // Compile minimal C++ stub to ensure C++ runtime is linked
+    // PDFium and QPDF are C++ libraries that need C++ stdlib support
     cc::Build::new()
         .cpp(true)
-        .file("src/bridge.cpp")
-        .include("src")
-        .include(assets_dir.join("include"))
-        .include(assets_dir.join("include/qpdf"))
+        .file("src/stub.cpp")
         .flag_if_supported("-std=c++17")
-        .flag_if_supported("-Wno-unused-parameter")
-        .compile("pdfium_bridge");
+        .compile("cpp_stub");
 
     println!("cargo:warning=Build configuration:");
     println!("cargo:warning=  Libraries: {}", assets_dir.display());
     println!("cargo:warning=  libpdfium.a: 19 MB");
     println!("cargo:warning=  libqpdf.a: 7 MB");
+    println!("cargo:warning=  NOTE: Calling PDFium C API directly (minimal C++ stub for runtime)");
 }

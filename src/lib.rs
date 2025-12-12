@@ -3,35 +3,73 @@ mod error;
 pub use error::{PdfiumError, Result};
 
 mod ffi {
+    use std::os::raw::{c_char, c_int, c_uint, c_void};
+
+    // Opaque PDFium types
+    #[allow(non_camel_case_types)]
+    pub type FPDF_DOCUMENT = *mut c_void;
+    #[allow(non_camel_case_types)]
+    pub type FPDF_PAGE = *mut c_void;
+    #[allow(non_camel_case_types)]
+    pub type FPDF_TEXTPAGE = *mut c_void;
+
+    // PDFium config structure
+    #[repr(C)]
+    #[allow(non_snake_case)]
+    pub struct FPDF_LIBRARY_CONFIG {
+        pub version: c_int,
+        pub m_pUserFontPaths: *mut *const c_char,
+        pub m_pIsolate: *mut c_void,
+        pub m_v8EmbedderSlot: c_uint,
+    }
+
     extern "C" {
-        pub fn pdfium_bridge_initialize() -> i32;
-        pub fn pdfium_bridge_cleanup();
-        pub fn pdfium_bridge_extract_text(
-            pdf_data: *const u8,
+        // Direct PDFium C API calls (no bridge!)
+        pub fn FPDF_InitLibraryWithConfig(config: *const FPDF_LIBRARY_CONFIG);
+        pub fn FPDF_DestroyLibrary();
+        pub fn FPDF_LoadMemDocument(
+            data_buf: *const c_void,
+            size: c_int,
+            password: *const c_char,
+        ) -> FPDF_DOCUMENT;
+        pub fn FPDF_CloseDocument(document: FPDF_DOCUMENT);
+        pub fn FPDF_GetPageCount(document: FPDF_DOCUMENT) -> c_int;
+        pub fn FPDF_LoadPage(document: FPDF_DOCUMENT, page_index: c_int) -> FPDF_PAGE;
+        pub fn FPDF_ClosePage(page: FPDF_PAGE);
+        pub fn FPDFText_LoadPage(page: FPDF_PAGE) -> FPDF_TEXTPAGE;
+        pub fn FPDFText_ClosePage(text_page: FPDF_TEXTPAGE);
+        pub fn FPDFText_CountChars(text_page: FPDF_TEXTPAGE) -> c_int;
+        pub fn FPDFText_GetText(
+            text_page: FPDF_TEXTPAGE,
+            start_index: c_int,
+            count: c_int,
+            result: *mut u16,
+        ) -> c_int;
+        pub fn IPDF_QPDF_PDFToJSON(
+            pdf_data: *const c_void,
             pdf_size: usize,
-        ) -> *mut std::os::raw::c_char;
-        pub fn pdfium_bridge_pdf_to_json(
-            pdf_data: *const u8,
-            pdf_size: usize,
-        ) -> *mut std::os::raw::c_char;
-        pub fn pdfium_bridge_free_string(s: *mut std::os::raw::c_char);
+            version: c_int,
+        ) -> *mut c_char;
+        pub fn IPDF_QPDF_FreeString(str: *mut c_char);
     }
 }
 
 static INIT: Once = Once::new();
 
 pub fn initialize() -> Result<()> {
-    let mut init_result = Ok(());
-
     INIT.call_once(|| {
         unsafe {
-            if ffi::pdfium_bridge_initialize() == 0 {
-                init_result = Err(PdfiumError::InitializationFailed);
-            }
+            let config = ffi::FPDF_LIBRARY_CONFIG {
+                version: 2,
+                m_pUserFontPaths: std::ptr::null_mut(),
+                m_pIsolate: std::ptr::null_mut(),
+                m_v8EmbedderSlot: 0,
+            };
+            ffi::FPDF_InitLibraryWithConfig(&config);
         }
     });
 
-    init_result
+    Ok(())
 }
 
 /// Initialize PDFium library (C ABI for WASM)
@@ -68,24 +106,62 @@ pub fn extract_text(pdf_bytes: &[u8]) -> Result<String> {
     }
 
     unsafe {
-        let c_str_ptr = ffi::pdfium_bridge_extract_text(
-            pdf_bytes.as_ptr(),
-            pdf_bytes.len()
+        // Load PDF directly with PDFium
+        let doc = ffi::FPDF_LoadMemDocument(
+            pdf_bytes.as_ptr() as *const std::ffi::c_void,
+            pdf_bytes.len() as i32,
+            std::ptr::null(),
         );
 
-        if c_str_ptr.is_null() {
+        if doc.is_null() {
             return Err(PdfiumError::ExtractionFailed(
-                "Failed to extract text from PDF".to_string()
+                "Failed to load PDF document".to_string()
             ));
         }
 
-        // Convert C string to Rust String
-        let c_str = std::ffi::CStr::from_ptr(c_str_ptr);
-        let text = c_str.to_string_lossy().into_owned();
+        let page_count = ffi::FPDF_GetPageCount(doc);
+        let mut text = String::new();
 
-        // Free the C string
-        ffi::pdfium_bridge_free_string(c_str_ptr);
+        // Extract text from each page
+        for i in 0..page_count {
+            let page = ffi::FPDF_LoadPage(doc, i);
+            if page.is_null() {
+                continue;
+            }
 
+            let text_page = ffi::FPDFText_LoadPage(page);
+            if !text_page.is_null() {
+                let text_length = ffi::FPDFText_CountChars(text_page);
+
+                if text_length > 0 {
+                    // Allocate buffer for UTF-16 text
+                    let mut buffer: Vec<u16> = vec![0; (text_length + 1) as usize];
+                    let chars_written = ffi::FPDFText_GetText(
+                        text_page,
+                        0,
+                        text_length,
+                        buffer.as_mut_ptr(),
+                    );
+
+                    if chars_written > 0 {
+                        // Convert UTF-16 to Rust String
+                        buffer.truncate((chars_written - 1) as usize);
+                        text.push_str(&String::from_utf16_lossy(&buffer));
+                    }
+                }
+
+                ffi::FPDFText_ClosePage(text_page);
+            }
+
+            ffi::FPDF_ClosePage(page);
+
+            // Add page separator
+            if i < page_count - 1 {
+                text.push_str("\n---PAGE BREAK---\n");
+            }
+        }
+
+        ffi::FPDF_CloseDocument(doc);
         Ok(text)
     }
 }
@@ -137,23 +213,25 @@ pub fn pdf_to_json(pdf_bytes: &[u8]) -> Result<String> {
     }
 
     unsafe {
-        let c_str_ptr = ffi::pdfium_bridge_pdf_to_json(
-            pdf_bytes.as_ptr(),
-            pdf_bytes.len()
+        // Call QPDF directly
+        let json_ptr = ffi::IPDF_QPDF_PDFToJSON(
+            pdf_bytes.as_ptr() as *const std::ffi::c_void,
+            pdf_bytes.len(),
+            2, // Version 2
         );
 
-        if c_str_ptr.is_null() {
+        if json_ptr.is_null() {
             return Err(PdfiumError::ConversionFailed(
                 "Failed to convert PDF to JSON".to_string()
             ));
         }
 
         // Convert C string to Rust String
-        let c_str = std::ffi::CStr::from_ptr(c_str_ptr);
+        let c_str = std::ffi::CStr::from_ptr(json_ptr);
         let json = c_str.to_string_lossy().into_owned();
 
-        // Free the C string
-        ffi::pdfium_bridge_free_string(c_str_ptr);
+        // Free the C string using QPDF's function
+        ffi::IPDF_QPDF_FreeString(json_ptr);
 
         Ok(json)
     }
@@ -188,7 +266,7 @@ pub extern "C" fn pdfium_wasm_pdf_to_json(
 /// resources anyway, but it's good practice to call it explicitly.
 pub fn cleanup() {
     unsafe {
-        ffi::pdfium_bridge_cleanup();
+        ffi::FPDF_DestroyLibrary();
     }
 }
 
