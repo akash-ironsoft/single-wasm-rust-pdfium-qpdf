@@ -96,7 +96,6 @@ echo -e "${BLUE}[4/4]${NC} Checking web directory..."
 
 REQUIRED_FILES=(
     "web/index.html"
-    "web/pdfium-wrapper.js"
     "web/auto_pqdfium_rs.wasm"
     "web/auto_pqdfium_rs.js"
 )
