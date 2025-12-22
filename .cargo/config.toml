@@ -2,7 +2,7 @@
 rustflags = [
     "-C", "link-arg=-sERROR_ON_UNDEFINED_SYMBOLS=0",
     "-C", "link-arg=-sALLOW_MEMORY_GROWTH=1",
-    "-C", "link-arg=-sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_malloc,_free",
+    "-C", "link-arg=-sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_pdfium_wasm_load_custom_document,_pdfium_wasm_save_as_copy_custom,_FPDF_InitLibraryWithConfig,_FPDF_CloseDocument,_IPDF_StreamingIO_LoadDocument,_IPDF_StreamingIO_SaveWithCallback,_IPDF_StreamingIO_GetPageCount,_IPDF_StreamingIO_GetPageSize,_IPDF_StreamingIO_GetPageText,_IPDF_StreamingIO_RenderPage,_IPDF_StreamingIO_FreeString,_malloc,_free",
     "-C", "link-arg=-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,writeArrayToMemory",
     "-C", "link-arg=-sMODULARIZE=1",
     "-C", "link-arg=-sEXPORT_NAME=createPdfiumModule",
@@ -10,4 +10,6 @@ rustflags = [
     "-C", "link-arg=-sENVIRONMENT=web",
     "-C", "link-arg=-sSINGLE_FILE=0",
     "-C", "link-arg=--no-entry",
+    "-C", "link-arg=-Wl,--export-dynamic",
+    "-C", "link-arg=-sMAIN_MODULE=2",
 ]

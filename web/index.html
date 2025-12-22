@@ -231,6 +231,7 @@
                 <div id="fileInfo"></div>
                 <button id="extractBtn" disabled>Extract Text</button>
                 <button id="jsonBtn" disabled>Convert to JSON</button>
+                <button id="customIOBtn" disabled style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">Test Custom I/O</button>
 
                 <div class="stats" style="margin-top: 20px; display: none;" id="stats">
                     <div class="stat-box">
@@ -422,10 +423,230 @@
           }
 
           /**
+           * Load PDF with custom reader callback (page-by-page)
+           * @param {number} fileSize - Total file size in bytes
+           * @param {Function} getBlockCallback - Callback(position, size) => Uint8Array
+           * @param {string} password - Optional password
+           * @returns {Promise<number>} Document handle
+           */
+          async loadCustomDocument(fileSize, getBlockCallback, password = '') {
+            if (!this.initialized) {
+              throw new Error('PDFium not initialized. Call init() first.');
+            }
+
+            // Create C callback from JavaScript function
+            const callbackPtr = this.Module.addFunction(
+              (userData, position, bufferPtr, size) => {
+                try {
+                  const data = getBlockCallback(position, size);
+                  if (!data || data.length !== size) {
+                    console.error(`getBlock failed: expected ${size} bytes, got ${data?.length || 0}`);
+                    return 0;
+                  }
+                  this.Module.HEAPU8.set(new Uint8Array(data), bufferPtr);
+                  return 1;
+                } catch (error) {
+                  console.error('Error in getBlock callback:', error);
+                  return 0;
+                }
+              },
+              'iiiii' // int(int, int, int, int)
+            );
+
+            let passwordPtr = 0;
+            if (password) {
+              const passwordBytes = new TextEncoder().encode(password + '\0');
+              passwordPtr = this.Module._malloc(passwordBytes.length);
+              this.Module.HEAPU8.set(passwordBytes, passwordPtr);
+            }
+
+            try {
+              const document = this.Module._pdfium_wasm_load_custom_document(
+                fileSize,
+                callbackPtr,
+                0,
+                passwordPtr
+              );
+
+              if (!document) {
+                throw new Error('Failed to load PDF with custom reader');
+              }
+
+              // Store callback for cleanup
+              if (!this._callbacks) this._callbacks = new Map();
+              this._callbacks.set(document, callbackPtr);
+
+              return document;
+            } finally {
+              if (passwordPtr) {
+                this.Module._free(passwordPtr);
+              }
+            }
+          }
+
+          /**
+           * Save PDF with custom writer callback (incremental output)
+           * @param {number} document - Document handle
+           * @param {Function} writeBlockCallback - Callback(chunk: Uint8Array) => boolean
+           * @param {number} flags - Save flags (0 = normal, 1 = incremental)
+           * @returns {Promise<boolean>} Success status
+           */
+          async saveAsCustom(document, writeBlockCallback, flags = 0) {
+            if (!this.initialized) {
+              throw new Error('PDFium not initialized. Call init() first.');
+            }
+
+            const callbackPtr = this.Module.addFunction(
+              (userData, dataPtr, size) => {
+                try {
+                  const data = new Uint8Array(this.Module.HEAPU8.buffer, dataPtr, size);
+                  const chunk = new Uint8Array(data);
+                  const result = writeBlockCallback(chunk);
+                  return result ? 1 : 0;
+                } catch (error) {
+                  console.error('Error in writeBlock callback:', error);
+                  return 0;
+                }
+              },
+              'iiii' // int(int, int, int)
+            );
+
+            try {
+              const result = this.Module._pdfium_wasm_save_as_copy_custom(
+                document,
+                callbackPtr,
+                0,
+                flags
+              );
+
+              return result === 1;
+            } finally {
+              this.Module.removeFunction(callbackPtr);
+            }
+          }
+
+          /**
+           * Get page count using StreamingIO helper
+           * @param {number} document - Document handle
+           * @returns {number} Page count
+           */
+          getPageCount(document) {
+            if (!this.initialized) return 0;
+            return this.Module._IPDF_StreamingIO_GetPageCount(document);
+          }
+
+          /**
+           * Get page dimensions using StreamingIO helper
+           * @param {number} document - Document handle
+           * @param {number} pageIndex - Page index
+           * @returns {Object} {width, height} in points
+           */
+          getPageSize(document, pageIndex) {
+            if (!this.initialized) return null;
+
+            const widthPtr = this.Module._malloc(8);
+            const heightPtr = this.Module._malloc(8);
+
+            try {
+              const result = this.Module._IPDF_StreamingIO_GetPageSize(
+                document, pageIndex, widthPtr, heightPtr
+              );
+
+              if (result) {
+                return {
+                  width: this.Module.getValue(widthPtr, 'double'),
+                  height: this.Module.getValue(heightPtr, 'double')
+                };
+              }
+              return null;
+            } finally {
+              this.Module._free(widthPtr);
+              this.Module._free(heightPtr);
+            }
+          }
+
+          /**
+           * Extract text from a page using StreamingIO helper
+           * @param {number} document - Document handle
+           * @param {number} pageIndex - Page index
+           * @returns {string} Extracted text
+           */
+          getPageText(document, pageIndex) {
+            if (!this.initialized) return '';
+
+            const textPtr = this.Module._IPDF_StreamingIO_GetPageText(document, pageIndex);
+            if (!textPtr) return '';
+
+            const text = this.Module.UTF8ToString(textPtr);
+            this.Module._IPDF_StreamingIO_FreeString(textPtr);
+
+            return text;
+          }
+
+          /**
+           * Render page to RGBA bitmap using StreamingIO helper
+           * @param {number} document - Document handle
+           * @param {number} pageIndex - Page index
+           * @param {number} width - Output width in pixels
+           * @param {number} height - Output height in pixels
+           * @returns {Uint8Array} RGBA bitmap data
+           */
+          renderPage(document, pageIndex, width, height) {
+            if (!this.initialized) return null;
+
+            const sizePtr = this.Module._malloc(4);
+
+            try {
+              const bufferPtr = this.Module._IPDF_StreamingIO_RenderPage(
+                document, pageIndex, width, height, sizePtr
+              );
+
+              if (!bufferPtr) return null;
+
+              const size = this.Module.getValue(sizePtr, 'i32');
+              const bitmap = new Uint8Array(
+                this.Module.HEAPU8.buffer, bufferPtr, size
+              ).slice(); // Copy data
+
+              this.Module._IPDF_StreamingIO_FreeString(bufferPtr);
+
+              return bitmap;
+            } finally {
+              this.Module._free(sizePtr);
+            }
+          }
+
+          /**
+           * Close a document loaded with loadCustomDocument
+           * @param {number} document - Document handle
+           */
+          closeDocument(document) {
+            if (!this.initialized || !this.Module) return;
+
+            // Clean up callback if stored
+            if (this._callbacks && this._callbacks.has(document)) {
+              const callbackPtr = this._callbacks.get(document);
+              this.Module.removeFunction(callbackPtr);
+              this._callbacks.delete(document);
+            }
+
+            // Close document via PDFium API
+            this.Module._FPDF_CloseDocument(document);
+          }
+
+          /**
            * Cleanup PDFium resources
            */
           cleanup() {
             if (this.initialized && this.Module) {
+              // Clean up any remaining callbacks
+              if (this._callbacks) {
+                for (const callbackPtr of this._callbacks.values()) {
+                  this.Module.removeFunction(callbackPtr);
+                }
+                this._callbacks.clear();
+              }
+
               this.Module._pdfium_wasm_cleanup();
               this.initialized = false;
               console.log('PDFium cleaned up');
@@ -462,6 +683,7 @@
         const fileInput = document.getElementById('fileInput');
         const extractBtn = document.getElementById('extractBtn');
         const jsonBtn = document.getElementById('jsonBtn');
+        const customIOBtn = document.getElementById('customIOBtn');
         const output = document.getElementById('output');
 
         uploadArea.onclick = () => fileInput.click();
@@ -510,6 +732,7 @@
 
                 extractBtn.disabled = false;
                 jsonBtn.disabled = false;
+                customIOBtn.disabled = false;
                 output.textContent = '';
                 showStatus('PDF loaded successfully!', 'success');
             } catch (error) {
@@ -563,6 +786,94 @@
                 showStatus('Conversion failed: ' + error.message, 'error');
             } finally {
                 jsonBtn.disabled = false;
+            }
+        };
+
+        customIOBtn.onclick = async () => {
+            if (!currentPdfBytes) return;
+
+            try {
+                customIOBtn.disabled = true;
+                showStatus('Testing custom I/O (page-by-page)...', 'info');
+                output.innerHTML = '<div class="loading"></div> Loading with custom reader...\n';
+
+                const startTime = performance.now();
+                let readCount = 0;
+                const readOperations = [];
+
+                // Load PDF with custom reader
+                const pdfDocument = await pdfium.loadCustomDocument(
+                    currentPdfBytes.length,
+                    (position, size) => {
+                        readCount++;
+                        readOperations.push({ position, size });
+                        console.log(`Read #${readCount}: position=${position}, size=${size}`);
+                        return currentPdfBytes.slice(position, position + size);
+                    }
+                );
+
+                output.textContent = `✓ Loaded with custom reader (${readCount} read operations)\n\n`;
+
+                // Get page count using helper
+                const pageCount = pdfium.getPageCount(pdfDocument);
+                output.textContent += `Pages: ${pageCount}\n`;
+
+                // Get first page size
+                if (pageCount > 0) {
+                    const pageSize = pdfium.getPageSize(pdfDocument, 0);
+                    if (pageSize) {
+                        output.textContent += `Page 1 size: ${pageSize.width.toFixed(2)} x ${pageSize.height.toFixed(2)} points\n`;
+                    }
+
+                    // Extract text from first page
+                    const text = pdfium.getPageText(pdfDocument, 0);
+                    if (text) {
+                        output.textContent += `Page 1 text preview: ${text.substring(0, 100)}...\n`;
+                    }
+                }
+                output.textContent += '\n';
+
+                // Save with custom writer
+                output.textContent += 'Saving with custom writer...\n';
+                const chunks = [];
+                const success = await pdfium.saveAsCustom(pdfDocument, (chunk) => {
+                    chunks.push(new Uint8Array(chunk));
+                    console.log(`Write chunk: ${chunk.length} bytes`);
+                    return true;
+                });
+
+                const endTime = performance.now();
+
+                if (success) {
+                    const totalSize = chunks.reduce((sum, c) => sum + c.length, 0);
+
+                    output.textContent += `\n✓ Saved successfully\n\n`;
+                    output.textContent += `═══ Custom I/O Test Results ═══\n\n`;
+                    output.textContent += `Read Operations: ${readCount}\n`;
+                    output.textContent += `Write Operations: ${chunks.length}\n`;
+                    output.textContent += `Output Size: ${totalSize.toLocaleString()} bytes\n`;
+                    output.textContent += `Processing Time: ${Math.round(endTime - startTime)}ms\n\n`;
+                    output.textContent += `First 5 read operations:\n`;
+                    readOperations.slice(0, 5).forEach((op, i) => {
+                        output.textContent += `  ${i + 1}. pos=${op.position}, size=${op.size}\n`;
+                    });
+
+                    document.getElementById('textLength').textContent = totalSize.toLocaleString();
+                    document.getElementById('processTime').textContent = Math.round(endTime - startTime);
+                    showStatus(`Custom I/O test successful! ${readCount} reads, ${chunks.length} writes`, 'success');
+                } else {
+                    throw new Error('Save operation failed');
+                }
+
+                // Cleanup
+                pdfium.closeDocument(pdfDocument);
+
+            } catch (error) {
+                output.textContent = 'Error: ' + error.message;
+                showStatus('Custom I/O test failed: ' + error.message, 'error');
+                console.error(error);
+            } finally {
+                customIOBtn.disabled = false;
             }
         };
 

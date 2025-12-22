@@ -1,0 +1,31 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "cargo build debug",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "build",
+                "--target",
+                "wasm32-unknown-emscripten"
+            ],
+            "problemMatcher": ["$rustc"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "cargo test",
+            "type": "shell",
+            "command": "cargo",
+            "args": [
+                "test",
+                "--no-fail-fast"
+            ],
+            "problemMatcher": ["$rustc"],
+            "group": "test"
+        }
+    ]
+}

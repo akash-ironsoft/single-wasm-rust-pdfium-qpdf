@@ -3,7 +3,7 @@ mod error;
 pub use error::{PdfiumError, Result};
 
 mod ffi {
-    use std::os::raw::{c_char, c_int, c_uint, c_void};
+    use std::os::raw::{c_char, c_int, c_uint, c_ulong, c_uchar, c_void};
 
     // Opaque PDFium types
     #[allow(non_camel_case_types)]
@@ -51,7 +51,52 @@ mod ffi {
             version: c_int,
         ) -> *mut c_char;
         pub fn IPDF_QPDF_FreeString(str: *mut c_char);
+
+        // Streaming I/O functions (directly from Universal.Pdfium)
+        pub fn IPDF_StreamingIO_LoadDocument(
+            file_size: c_ulong,
+            get_block_callback: Option<
+                unsafe extern "C" fn(*mut c_void, c_ulong, *mut c_uchar, c_ulong) -> c_int,
+            >,
+            user_data: *mut c_void,
+            password: *const c_char,
+        ) -> FPDF_DOCUMENT;
+        pub fn IPDF_StreamingIO_SaveWithCallback(
+            document: FPDF_DOCUMENT,
+            write_block_callback: Option<
+                unsafe extern "C" fn(*mut c_void, *const c_void, c_ulong) -> c_int,
+            >,
+            user_data: *mut c_void,
+            flags: c_int,
+        ) -> c_int;
+
+        // Streaming I/O helper functions (reduce JavaScript boilerplate)
+        pub fn IPDF_StreamingIO_GetPageCount(document: FPDF_DOCUMENT) -> c_int;
+        pub fn IPDF_StreamingIO_GetPageSize(
+            document: FPDF_DOCUMENT,
+            page_index: c_int,
+            width: *mut f64,
+            height: *mut f64,
+        ) -> c_int;
+        pub fn IPDF_StreamingIO_GetPageText(
+            document: FPDF_DOCUMENT,
+            page_index: c_int,
+        ) -> *mut c_char;
+        pub fn IPDF_StreamingIO_RenderPage(
+            document: FPDF_DOCUMENT,
+            page_index: c_int,
+            width: c_int,
+            height: c_int,
+            out_size: *mut c_ulong,
+        ) -> *mut c_uchar;
+        pub fn IPDF_StreamingIO_FreeString(ptr: *mut c_void);
     }
+
+    // Type aliases for better readability
+    pub type GetBlockCallback =
+        Option<unsafe extern "C" fn(*mut c_void, c_ulong, *mut c_uchar, c_ulong) -> c_int>;
+    pub type WriteBlockCallback =
+        Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_ulong) -> c_int>;
 }
 
 static INIT: Once = Once::new();
@@ -284,4 +329,69 @@ pub extern "C" fn pdfium_wasm_free_string(ptr: *mut u8) {
 #[no_mangle]
 pub extern "C" fn pdfium_wasm_cleanup() {
     cleanup();
+}
+
+// ============================================================================
+// Custom I/O Functions for Page-by-Page PDF Processing
+// ============================================================================
+
+/// Load PDF with custom reader callback (C ABI for WASM)
+///
+/// This allows loading PDFs page-by-page from any source (URL, file, etc.)
+///
+/// # Arguments
+/// * `file_size` - Total size of the PDF file in bytes
+/// * `get_block_callback` - Callback function for reading data chunks
+/// * `user_data` - User-defined context pointer passed to callback
+/// * `password` - Optional password (null or empty string for no password)
+///
+/// # Returns
+/// * FPDF_DOCUMENT handle on success, null on failure
+///
+/// # Safety
+/// The callback will be called multiple times by PDFium to read data.
+/// The callback signature: fn(user_data, position, buffer, size) -> success (1/0)
+#[no_mangle]
+pub unsafe extern "C" fn pdfium_wasm_load_custom_document(
+    file_size: std::os::raw::c_ulong,
+    get_block_callback: ffi::GetBlockCallback,
+    user_data: *mut std::os::raw::c_void,
+    password: *const std::os::raw::c_char,
+) -> ffi::FPDF_DOCUMENT {
+    // Ensure PDFium is initialized
+    let _ = initialize();
+
+    // Call PDFium's streaming document loader
+    ffi::IPDF_StreamingIO_LoadDocument(file_size, get_block_callback, user_data, password)
+}
+
+/// Save PDF with custom writer callback (C ABI for WASM)
+///
+/// This allows saving PDFs incrementally to any destination (server, memory, etc.)
+///
+/// # Arguments
+/// * `document` - FPDF_DOCUMENT handle
+/// * `write_block_callback` - Callback function for writing data chunks
+/// * `user_data` - User-defined context pointer passed to callback
+/// * `flags` - Save flags (0 for normal, 1 for incremental)
+///
+/// # Returns
+/// * 1 on success, 0 on failure
+///
+/// # Safety
+/// The callback will be called multiple times by PDFium to write data chunks.
+/// The callback signature: fn(user_data, data, size) -> success (1/0)
+#[no_mangle]
+pub unsafe extern "C" fn pdfium_wasm_save_as_copy_custom(
+    document: ffi::FPDF_DOCUMENT,
+    write_block_callback: ffi::WriteBlockCallback,
+    user_data: *mut std::os::raw::c_void,
+    flags: std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    if document.is_null() {
+        return 0;
+    }
+
+    // Call PDFium's streaming save function
+    ffi::IPDF_StreamingIO_SaveWithCallback(document, write_block_callback, user_data, flags)
 }

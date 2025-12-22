@@ -56,8 +56,9 @@ emcc target/wasm32-unknown-emscripten/release/libauto_pqdfium_rs.a \
     -o web/auto_pqdfium_rs.js \
     -sERROR_ON_UNDEFINED_SYMBOLS=0 \
     -sALLOW_MEMORY_GROWTH=1 \
-    -sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_malloc,_free \
-    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,writeArrayToMemory \
+    -sALLOW_TABLE_GROWTH=1 \
+    -sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_pdfium_wasm_load_custom_document,_pdfium_wasm_save_as_copy_custom,_FPDF_GetPageCount,_FPDF_CloseDocument,_IPDF_StreamingIO_GetPageCount,_IPDF_StreamingIO_GetPageSize,_IPDF_StreamingIO_GetPageText,_IPDF_StreamingIO_RenderPage,_IPDF_StreamingIO_FreeString,_malloc,_free \
+    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,writeArrayToMemory,addFunction,removeFunction,HEAPU8 \
     -sINITIAL_MEMORY=67108864 \
     -sMODULARIZE=1 \
     -sEXPORT_NAME=createPdfiumModule \
