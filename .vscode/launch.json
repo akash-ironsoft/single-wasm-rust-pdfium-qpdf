@@ -1,0 +1,35 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Rust Tests",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/deps/${input:testExecutable}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "sourceLanguages": ["rust", "cpp"],
+            "preLaunchTask": "cargo build debug"
+        },
+        {
+            "name": "Debug Example/Binary",
+            "type": "lldb",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "stopOnEntry": false,
+            "sourceLanguages": ["rust", "cpp"],
+            "preLaunchTask": "cargo build debug"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "testExecutable",
+            "type": "promptString",
+            "description": "Test executable name (without hash)",
+            "default": "auto_pqdfium_rs"
+        }
+    ]
+}

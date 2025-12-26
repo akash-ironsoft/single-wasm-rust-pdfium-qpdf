@@ -32,9 +32,9 @@ echo -e "${GREEN}✓${NC} PDFium workspace: ${PDFIUM_WORKSPACE}"
 echo -e "${GREEN}✓${NC} Build type: ${BUILD_TYPE}"
 echo ""
 
-mkdir -p "${ASSETS_DIR}/include/qpdf"
+mkdir -p "${ASSETS_DIR}"
 
-echo -e "${BLUE}[1/4]${NC} Copying libpdfium.a..."
+echo -e "${BLUE}[1/2]${NC} Copying libpdfium.a..."
 PDFIUM_LIB="${BUILD_DIR}/obj/libpdfium.a"
 if [ ! -f "${PDFIUM_LIB}" ]; then
     echo -e "${RED}❌ libpdfium.a not found${NC}"
@@ -43,7 +43,7 @@ fi
 cp "${PDFIUM_LIB}" "${ASSETS_DIR}/libpdfium.a"
 echo -e "${GREEN}✓${NC} libpdfium.a: $(du -h "${ASSETS_DIR}/libpdfium.a" | cut -f1)"
 
-echo -e "${BLUE}[2/4]${NC} Processing libqpdf.a..."
+echo -e "${BLUE}[2/2]${NC} Processing libqpdf.a..."
 QPDF_DIR="${BUILD_DIR}/obj/third_party/Universal.Qpdf"
 QPDF_LIB="${QPDF_DIR}/libqpdf.a"
 
@@ -64,25 +64,6 @@ else
     cp "${QPDF_LIB}" "${ASSETS_DIR}/libqpdf.a"
 fi
 echo -e "${GREEN}✓${NC} libqpdf.a: $(du -h "${ASSETS_DIR}/libqpdf.a" | cut -f1)"
-
-echo -e "${BLUE}[3/4]${NC} Copying PDFium headers..."
-PDFIUM_PUBLIC="${PDFIUM_WORKSPACE}/public"
-if [ -d "${PDFIUM_PUBLIC}" ]; then
-    cp -r "${PDFIUM_PUBLIC}"/*.h "${ASSETS_DIR}/include/" 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} PDFium headers copied"
-else
-    echo -e "${YELLOW}⚠${NC}  PDFium headers not found"
-fi
-
-echo -e "${BLUE}[4/4]${NC} Copying QPDF headers..."
-QPDF_INCLUDE="${PDFIUM_WORKSPACE}/third_party/Universal.Qpdf/include/qpdf"
-if [ -d "${QPDF_INCLUDE}" ]; then
-    cp -r "${QPDF_INCLUDE}"/*.h "${ASSETS_DIR}/include/qpdf/" 2>/dev/null || true
-    cp -r "${QPDF_INCLUDE}"/*.hh "${ASSETS_DIR}/include/qpdf/" 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} QPDF headers copied"
-else
-    echo -e "${YELLOW}⚠${NC}  QPDF headers not found"
-fi
 
 echo ""
 echo -e "${GREEN}✅ Assets prepared successfully!${NC}"

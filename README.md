@@ -23,8 +23,7 @@ WASM (auto_pqdfium_rs.wasm)
 1. Takes PDFium workspace path (default: `/home/akash/Dev/ironsoft/iron-universal/Universal.PdfEditor/pdfium-workspace/Universal.Pdfium`)
 2. Copies `libpdfium.a` (19MB) from `out/emscripten-wasm-release/obj/`
 3. Processes `libqpdf.a` (7MB) - converts thin archive to full archive if needed
-4. Copies PDFium headers (`.h`) and QPDF headers (`.h`, `.hh`) to `assets/include/`
-5. Creates self-contained `assets/` directory with libraries + headers (~26MB total)
+4. Creates self-contained `assets/` directory with libraries (~26MB total)
 
 ## Build Process (build-web.sh)
 

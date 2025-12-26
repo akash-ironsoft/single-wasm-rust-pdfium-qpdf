@@ -30,8 +30,8 @@ if [ ! -f "web/auto_pqdfium_rs.wasm" ]; then
 fi
 
 # Start server
-echo "🌐 Starting server at http://localhost:8080"
+echo "🌐 Starting server at http://localhost:8081"
 echo "Serving: $(pwd)/web"
 echo ""
 
-cd web && python -m http.server
+cd web && python -m http.server 8081

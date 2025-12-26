@@ -1,0 +1,14 @@
+{
+    "rust-analyzer.cargo.target": "wasm32-unknown-emscripten",
+    "rust-analyzer.check.command": "build",
+    "rust-analyzer.check.extraArgs": [
+        "--target",
+        "wasm32-unknown-emscripten"
+    ],
+    "lldb.displayFormat": "auto",
+    "lldb.dereferencePointers": true,
+    "lldb.showDisassembly": "auto",
+    "files.watcherExclude": {
+        "**/target/**": true
+    }
+}

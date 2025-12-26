@@ -1,580 +1,2676 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PDFium WASM Demo</title>
-    <link rel="icon" type="image/svg+xml" href="favicon.svg">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Engine Profiler - WASM Memory &amp; Latency Observatory</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <style>
+    /**
+     * ==========================================================================
+     * ENGINEERING-GRADE OBSERVABILITY UI
+     * ==========================================================================
+     * Minimal, data-dense interface optimized for performance analysis.
+     * No decorative elements. Every pixel serves a purpose.
+     */
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
+    :root {
+      --bg-primary: #0d1117;
+      --bg-secondary: #161b22;
+      --bg-tertiary: #21262d;
+      --border: #30363d;
+      --text-primary: #c9d1d9;
+      --text-secondary: #8b949e;
+      --text-muted: #6e7681;
+      --accent-blue: #58a6ff;
+      --accent-green: #3fb950;
+      --accent-red: #f85149;
+      --accent-orange: #d29922;
+      --accent-purple: #a371f7;
+      --wasm-color: #f97316;
+      --js-color: #8b5cf6;
+      --latency-color: #22c55e;
+      --font-mono: 'SF Mono', 'Fira Code', 'JetBrains Mono', Consolas, monospace;
+    }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        header {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 30px;
-        }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-size: 13px;
+      line-height: 1.5;
+    }
 
-        h1 {
-            color: #333;
-            margin-bottom: 10px;
-        }
+    /* Header */
+    .header {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-        .subtitle {
-            color: #666;
-            font-size: 14px;
-        }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-        .main-content {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 20px;
-        }
+    .status-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-orange);
+      animation: pulse 2s infinite;
+    }
 
-        @media (max-width: 768px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-        }
+    .status-indicator.ready { background: var(--accent-green); animation: none; }
+    .status-indicator.error { background: var(--accent-red); animation: none; }
 
-        .card {
-            background: white;
-            padding: 25px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
 
-        .card h2 {
-            color: #333;
-            margin-bottom: 15px;
-            font-size: 20px;
-        }
+    .header-stats {
+      display: flex;
+      gap: 20px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
 
-        .upload-area {
-            border: 2px dashed #667eea;
-            border-radius: 8px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: #f8f9ff;
-        }
+    .header-stat {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
 
-        .upload-area:hover {
-            border-color: #764ba2;
-            background: #f0f2ff;
-        }
+    .header-stat-label { color: var(--text-muted); }
+    .header-stat-value { color: var(--text-primary); font-weight: 500; }
+    .header-stat-value.wasm { color: var(--wasm-color); }
+    .header-stat-value.js { color: var(--js-color); }
 
-        .upload-area.dragover {
-            border-color: #764ba2;
-            background: #e8eaff;
-            transform: scale(1.02);
-        }
+    /* Main Layout */
+    .main-container {
+      display: grid;
+      grid-template-columns: 300px 1fr;
+      height: calc(100vh - 49px);
+    }
 
-        input[type="file"] {
-            display: none;
-        }
+    /* Sidebar */
+    .sidebar {
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+    }
 
-        button {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 16px;
-            font-weight: 600;
-            transition: transform 0.2s;
-            margin-top: 15px;
-            width: 100%;
-        }
+    .section {
+      margin-bottom: 20px;
+    }
 
-        button:hover {
-            transform: translateY(-2px);
-        }
+    .section-title {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
 
-        button:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-        }
+    .file-drop {
+      border: 2px dashed var(--border);
+      border-radius: 6px;
+      padding: 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
 
-        .output {
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 8px;
-            max-height: 400px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
+    .file-drop:hover, .file-drop.dragover {
+      border-color: var(--accent-blue);
+    }
 
-        .output:empty::before {
-            content: 'Output will appear here...';
-            color: #999;
-            font-style: italic;
-        }
+    .file-drop input { display: none; }
 
-        .status {
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-            font-size: 14px;
-        }
+    .file-info {
+      margin-top: 12px;
+      padding: 10px;
+      background: var(--bg-tertiary);
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
 
-        .status.info {
-            background: #e3f2fd;
-            color: #1976d2;
-        }
+    .file-info-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
 
-        .status.success {
-            background: #e8f5e9;
-            color: #388e3c;
-        }
+    .file-info-row:last-child { margin-bottom: 0; }
+    .file-info-label { color: var(--text-muted); }
+    .file-info-value { color: var(--text-primary); }
 
-        .status.error {
-            background: #ffebee;
-            color: #c62828;
-        }
+    /* Buttons */
+    .btn-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
 
-        .loading {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid #667eea;
-            border-radius: 50%;
-            border-top-color: transparent;
-            animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
-        }
+    .btn {
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+    .btn:hover:not(:disabled) {
+      background: var(--bg-secondary);
+      border-color: var(--accent-blue);
+    }
 
-        .file-info {
-            background: #f0f2ff;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-size: 14px;
-        }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
 
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 15px;
-        }
+    .btn-danger {
+      border-color: var(--accent-red);
+      background: rgba(248, 81, 73, 0.1);
+    }
 
-        .stat-box {
-            background: #f0f2ff;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-        }
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(248, 81, 73, 0.2);
+      border-color: var(--accent-red);
+    }
 
-        .stat-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-        }
+    .btn-danger.loading {
+      pointer-events: none;
+      opacity: 0.7;
+    }
 
-        .stat-label {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-    </style>
+    .btn-tag {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: var(--font-mono);
+    }
+
+    .btn-tag.streaming { background: var(--accent-green); color: #000; }
+    .btn-tag.normal { background: var(--accent-orange); color: #000; }
+
+    /* Main Content */
+    .content {
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    /* Real-time Metrics Dashboard */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .metric-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .metric-label {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .metric-value.wasm { color: var(--wasm-color); }
+    .metric-value.js { color: var(--js-color); }
+    .metric-value.latency { color: var(--latency-color); }
+    .metric-value.neutral { color: var(--text-primary); }
+
+    .metric-delta {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .metric-delta.positive { color: var(--accent-red); }
+    .metric-delta.negative { color: var(--accent-green); }
+    .metric-delta.neutral { color: var(--text-muted); }
+
+    /* Graphs Section */
+    .graphs-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .graph-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .graph-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .graph-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .graph-legend {
+      display: flex;
+      gap: 12px;
+      font-size: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .graph-canvas {
+      width: 100%;
+      height: 120px;
+      background: var(--bg-primary);
+      border-radius: 4px;
+    }
+
+    /* Comparison Matrix */
+    .matrix-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .matrix-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .matrix-table th {
+      text-align: left;
+      padding: 10px 12px;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .matrix-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .matrix-table tr:last-child td { border-bottom: none; }
+
+    .matrix-table tr:hover { background: var(--bg-tertiary); }
+
+    .matrix-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .matrix-status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .matrix-status-dot.pending { background: var(--text-muted); }
+    .matrix-status-dot.running { background: var(--accent-orange); animation: pulse 1s infinite; }
+    .matrix-status-dot.complete { background: var(--accent-green); }
+    .matrix-status-dot.error { background: var(--accent-red); }
+
+    .value-good { color: var(--accent-green); }
+    .value-warn { color: var(--accent-orange); }
+    .value-bad { color: var(--accent-red); }
+
+    /* Snapshots Timeline */
+    .snapshots-section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 16px;
+    }
+
+    .snapshots-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .snapshots-title {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .snapshots-controls {
+      display: flex;
+      gap: 8px;
+    }
+
+    .snapshots-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+
+    .snapshots-btn:hover { border-color: var(--accent-blue); }
+
+    .snapshots-content {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .snapshot-row {
+      display: grid;
+      grid-template-columns: 200px repeat(6, 1fr);
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      align-items: center;
+    }
+
+    .snapshot-row:last-child { border-bottom: none; }
+    .snapshot-row:hover { background: var(--bg-tertiary); }
+
+    .snapshot-row.header {
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      position: sticky;
+      top: 0;
+    }
+
+    .snapshot-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .snapshot-marker {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--accent-blue);
+    }
+
+    .snapshot-marker.memory-grow { background: var(--accent-red); }
+
+    /* Engineering Notes Panel */
+    .notes-panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 16px;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .notes-panel h3 {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .notes-panel h4 {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-top: 12px;
+      margin-bottom: 6px;
+    }
+
+    .notes-panel p {
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .notes-panel code {
+      font-family: var(--font-mono);
+      background: var(--bg-tertiary);
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: var(--accent-purple);
+    }
+
+    .notes-panel ul {
+      margin-left: 16px;
+      color: var(--text-secondary);
+    }
+
+    .notes-panel li { margin-bottom: 4px; }
+
+    .warning-box {
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: 4px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+
+    .warning-box-title {
+      color: var(--accent-red);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .info-box {
+      background: rgba(88, 166, 255, 0.1);
+      border: 1px solid rgba(88, 166, 255, 0.3);
+      border-radius: 4px;
+      padding: 10px;
+      margin: 10px 0;
+    }
+
+    .info-box-title {
+      color: var(--accent-blue);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    /* Tabs */
+    .tab-container {
+      display: flex;
+      gap: 2px;
+      margin-bottom: 16px;
+    }
+
+    .tab {
+      padding: 8px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px 6px 0 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border-bottom-color: var(--bg-tertiary);
+    }
+
+    .tab:hover:not(.active) {
+      color: var(--text-secondary);
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Console Output */
+    .console-output {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .console-line {
+      margin-bottom: 2px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .console-line.info { color: var(--text-secondary); }
+    .console-line.warn { color: var(--accent-orange); }
+    .console-line.error { color: var(--accent-red); }
+    .console-line.success { color: var(--accent-green); }
+    .console-line.memory { color: var(--wasm-color); }
+
+    /* Results Display */
+    .result-text {
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+    }
+
+    .result-json {
+      padding: 16px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      line-height: 1.4;
+      white-space: pre;
+      overflow-x: auto;
+      background: var(--bg-primary);
+      color: var(--text-secondary);
+    }
+
+    .result-json .json-key { color: var(--accent-blue); }
+    .result-json .json-string { color: var(--accent-green); }
+    .result-json .json-number { color: var(--accent-orange); }
+    .result-json .json-bool { color: var(--accent-purple); }
+    .result-json .json-null { color: var(--text-muted); }
+
+    .result-binary {
+      padding: 16px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .result-binary-info {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-top: 12px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .memory-clear-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--accent-blue);
+      margin-left: 8px;
+    }
+
+    .memory-clear-indicator::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      background: var(--accent-blue);
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>PDFium WASM Demo</h1>
-            <p class="subtitle">Extract text and convert PDFs to JSON using WebAssembly</p>
-        </header>
-
-        <div class="main-content">
-            <div class="card">
-                <h2>Upload PDF</h2>
-                <div id="status"></div>
-                <div class="upload-area" id="uploadArea">
-                    <input type="file" id="fileInput" accept=".pdf">
-                    <svg width="48" height="48" fill="none" stroke="#667eea" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin: 0 auto 15px; display: block;">
-                        <path d="M21 15v4a2 2 0 0 0 2 2h4"></path>
-                        <path d="M17 21h-4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h8l4 4v10a2 2 0 0 1-2 2h-4"></path>
-                    </svg>
-                    <p style="color: #667eea; font-weight: 600;">Click to upload or drag and drop</p>
-                    <p style="color: #999; font-size: 13px; margin-top: 8px;">PDF files only</p>
-                </div>
-                <div id="fileInfo"></div>
-                <button id="extractBtn" disabled>Extract Text</button>
-                <button id="jsonBtn" disabled>Convert to JSON</button>
-
-                <div class="stats" style="margin-top: 20px; display: none;" id="stats">
-                    <div class="stat-box">
-                        <div class="stat-value" id="fileSize">0</div>
-                        <div class="stat-label">File Size (KB)</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="textLength">0</div>
-                        <div class="stat-label">Characters</div>
-                    </div>
-                    <div class="stat-box">
-                        <div class="stat-value" id="processTime">0</div>
-                        <div class="stat-label">Time (ms)</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card">
-                <h2>Output</h2>
-                <div class="output" id="output"></div>
-            </div>
-        </div>
+  <!-- Header with Real-time Stats -->
+  <header class="header">
+    <h1>
+      <span class="status-indicator" id="statusIndicator"></span>
+      PDF Engine Profiler
+      <span id="statusText" style="font-weight: 400; color: var(--text-muted); margin-left: 8px;">Initializing...</span>
+    </h1>
+    <div class="header-stats">
+      <div class="header-stat">
+        <span class="header-stat-label">WASM Linear:</span>
+        <span class="header-stat-value wasm" id="headerWasmMemory">--</span>
+      </div>
+      <div class="header-stat">
+        <span class="header-stat-label">JS Heap:</span>
+        <span class="header-stat-value js" id="headerJsMemory">--</span>
+      </div>
+      <div class="header-stat">
+        <span class="header-stat-label">Samples:</span>
+        <span class="header-stat-value" id="headerSampleCount">0</span>
+      </div>
     </div>
+  </header>
 
-    <!-- Load Emscripten-generated module first -->
-    <script src="auto_pqdfium_rs.js"></script>
-    <!-- PDFium WASM Wrapper -->
-    <script>
-        /**
-         * PDFium WASM Wrapper (using Emscripten generated module)
-         * Simple JavaScript API for auto-pqdfium-rs WASM module
-         */
-        class PdfiumWasm {
-          constructor() {
-            this.Module = null;
-            this.initialized = false;
-          }
+  <div class="main-container">
+    <!-- Sidebar: File Input & Operations -->
+    <aside class="sidebar">
+      <div class="section">
+        <div class="section-title">Input</div>
+        <div class="file-drop" id="fileDrop">
+          <input type="file" id="pdfFile" accept="application/pdf">
+          <div style="color: var(--text-secondary);">Drop PDF or click to select</div>
+        </div>
+        <div class="file-info" id="fileInfo" style="display: none;">
+          <div class="file-info-row">
+            <span class="file-info-label">Name:</span>
+            <span class="file-info-value" id="fileName">--</span>
+          </div>
+          <div class="file-info-row">
+            <span class="file-info-label">Size:</span>
+            <span class="file-info-value" id="fileSize">--</span>
+          </div>
+        </div>
+      </div>
 
-          /**
-           * Initialize the WASM module
-           * @returns {Promise<void>}
-           */
-          async init() {
-            if (this.initialized) {
-              return;
-            }
+      <div class="section">
+        <div class="section-title">PDFium Operations</div>
+        <div class="btn-group">
+          <button class="btn" id="btnPdfiumExtractNormal" disabled>
+            Text Extraction
+            <span class="btn-tag normal">NORMAL</span>
+          </button>
+          <button class="btn" id="btnPdfiumExtractStream" disabled>
+            Text Extraction
+            <span class="btn-tag streaming">STREAM</span>
+          </button>
+          <button class="btn" id="btnPdfiumLoadNormal" disabled>
+            Load + Save
+            <span class="btn-tag normal">NORMAL</span>
+          </button>
+          <button class="btn" id="btnPdfiumLoadStream" disabled>
+            Load + Save
+            <span class="btn-tag streaming">STREAM</span>
+          </button>
+        </div>
+      </div>
 
-            try {
-              console.log('Loading PDFium WASM module...');
+      <div class="section">
+        <div class="section-title">QPDF Operations</div>
+        <div class="btn-group">
+          <button class="btn" id="btnQpdfJsonNormal" disabled>
+            PDF -> JSON
+            <span class="btn-tag normal">NORMAL</span>
+          </button>
+          <button class="btn" id="btnQpdfJsonStream" disabled>
+            PDF -> JSON
+            <span class="btn-tag streaming">STREAM</span>
+          </button>
+          <button class="btn" id="btnQpdfLoadStream" disabled>
+            Load + Save
+            <span class="btn-tag streaming">STREAM</span>
+          </button>
+        </div>
+      </div>
 
-              // Load the Emscripten-generated module
-              this.Module = await createPdfiumModule({
-                locateFile: (path) => {
-                  // Make sure WASM file is loaded from correct location
-                  if (path.endsWith('.wasm')) {
-                    return 'auto_pqdfium_rs.wasm';
-                  }
-                  return path;
-                },
-                print: (text) => console.log('[PDFium]', text),
-                printErr: (text) => console.error('[PDFium Error]', text),
-              });
+      <div class="section">
+        <div class="section-title">Controls</div>
+        <div class="btn-group">
+          <button class="btn" id="btnRunAll" disabled>Run All Comparisons</button>
+          <button class="btn" id="btnClearResults">Clear Results</button>
+          <button class="btn" id="btnExportData">Export Data (JSON)</button>
+        </div>
+      </div>
 
-              // Initialize PDFium library
-              const initResult = this.Module._pdfium_wasm_initialize();
-              if (initResult !== 1) {
-                throw new Error('Failed to initialize PDFium library');
-              }
+      <div class="section">
+        <div class="section-title">Memory Controls</div>
+        <div class="btn-group">
+          <button class="btn btn-danger" id="btnReinitWasm">
+            Reinitialize WASM
+            <span class="btn-tag" style="background: var(--accent-red); color: #fff;">RESET</span>
+          </button>
+        </div>
+        <div style="margin-top: 8px; font-size: 10px; color: var(--text-muted); line-height: 1.4;">
+          WASM linear memory cannot shrink. This destroys and recreates the module to reclaim memory.
+        </div>
+      </div>
+    </aside>
 
-              this.initialized = true;
-              console.log('✅ PDFium WASM initialized successfully');
-            } catch (error) {
-              console.error('❌ Failed to initialize PDFium WASM:', error);
-              throw error;
-            }
-          }
+    <!-- Main Content -->
+    <main class="content">
+      <!-- Real-time Metrics -->
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">WASM Linear Memory</div>
+          <div class="metric-value wasm" id="metricWasmCurrent">--</div>
+          <div class="metric-delta neutral" id="metricWasmDelta">No change</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">WASM Peak</div>
+          <div class="metric-value wasm" id="metricWasmPeak">--</div>
+          <div class="metric-delta neutral" id="metricWasmGrows">0 grows</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">JS Heap Used</div>
+          <div class="metric-value js" id="metricJsCurrent">--</div>
+          <div class="metric-delta neutral" id="metricJsDelta">No change</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">JS Heap Peak</div>
+          <div class="metric-value js" id="metricJsPeak">--</div>
+          <div class="metric-delta neutral" id="metricJsTotal">Total: --</div>
+        </div>
+      </div>
 
-          /**
-           * Extract text from a PDF document
-           * @param {Uint8Array} pdfBytes - PDF file as byte array
-           * @returns {Promise<string>} Extracted text
-           */
-          async extractText(pdfBytes) {
-            if (!this.initialized) {
-              throw new Error('PDFium not initialized. Call init() first.');
-            }
+      <!-- Live Graphs -->
+      <div class="graphs-container">
+        <div class="graph-card">
+          <div class="graph-header">
+            <span class="graph-title">Memory Timeline (Real-time)</span>
+            <div class="graph-legend">
+              <div class="legend-item">
+                <div class="legend-dot" style="background: var(--wasm-color)"></div>
+                <span>WASM</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-dot" style="background: var(--js-color)"></div>
+                <span>JS Heap</span>
+              </div>
+            </div>
+          </div>
+          <canvas class="graph-canvas" id="memoryGraph"></canvas>
+        </div>
+        <div class="graph-card">
+          <div class="graph-header">
+            <span class="graph-title">Latency Timeline</span>
+            <div class="graph-legend">
+              <div class="legend-item">
+                <div class="legend-dot" style="background: var(--latency-color)"></div>
+                <span>Op Duration</span>
+              </div>
+              <div class="legend-item">
+                <div class="legend-dot" style="background: var(--accent-blue)"></div>
+                <span>TTFB</span>
+              </div>
+            </div>
+          </div>
+          <canvas class="graph-canvas" id="latencyGraph"></canvas>
+        </div>
+      </div>
 
-            let pdfPtr = null;
-            try {
-              // Allocate memory for PDF data in WASM
-              pdfPtr = this.Module._malloc(pdfBytes.length);
-              if (!pdfPtr) {
-                throw new Error('Failed to allocate memory');
-              }
+      <!-- Comparison Matrix -->
+      <div class="matrix-section">
+        <div class="matrix-header">Live Comparison Matrix</div>
+        <table class="matrix-table">
+          <thead>
+            <tr>
+              <th>Engine</th>
+              <th>Operation</th>
+              <th>Mode</th>
+              <th>WASM Peak</th>
+              <th>JS Peak</th>
+              <th>TTFB</th>
+              <th>Total Latency</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="matrixBody">
+            <tr>
+              <td>PDFium</td>
+              <td>Extract</td>
+              <td><span class="btn-tag normal" style="font-size: 9px;">NORMAL</span></td>
+              <td id="pdfium-extract-normal-wasm">--</td>
+              <td id="pdfium-extract-normal-js">--</td>
+              <td id="pdfium-extract-normal-ttfb">--</td>
+              <td id="pdfium-extract-normal-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+            <tr>
+              <td>PDFium</td>
+              <td>Extract</td>
+              <td><span class="btn-tag streaming" style="font-size: 9px;">STREAM</span></td>
+              <td id="pdfium-extract-stream-wasm">--</td>
+              <td id="pdfium-extract-stream-js">--</td>
+              <td id="pdfium-extract-stream-ttfb">--</td>
+              <td id="pdfium-extract-stream-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+            <tr>
+              <td>PDFium</td>
+              <td>Load/Save</td>
+              <td><span class="btn-tag normal" style="font-size: 9px;">NORMAL</span></td>
+              <td id="pdfium-load-normal-wasm">--</td>
+              <td id="pdfium-load-normal-js">--</td>
+              <td id="pdfium-load-normal-ttfb">--</td>
+              <td id="pdfium-load-normal-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+            <tr>
+              <td>PDFium</td>
+              <td>Load/Save</td>
+              <td><span class="btn-tag streaming" style="font-size: 9px;">STREAM</span></td>
+              <td id="pdfium-load-stream-wasm">--</td>
+              <td id="pdfium-load-stream-js">--</td>
+              <td id="pdfium-load-stream-ttfb">--</td>
+              <td id="pdfium-load-stream-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+            <tr>
+              <td>QPDF</td>
+              <td>JSON</td>
+              <td><span class="btn-tag normal" style="font-size: 9px;">NORMAL</span></td>
+              <td id="qpdf-json-normal-wasm">--</td>
+              <td id="qpdf-json-normal-js">--</td>
+              <td id="qpdf-json-normal-ttfb">--</td>
+              <td id="qpdf-json-normal-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+            <tr>
+              <td>QPDF</td>
+              <td>JSON</td>
+              <td><span class="btn-tag streaming" style="font-size: 9px;">STREAM</span></td>
+              <td id="qpdf-json-stream-wasm">--</td>
+              <td id="qpdf-json-stream-js">--</td>
+              <td id="qpdf-json-stream-ttfb">--</td>
+              <td id="qpdf-json-stream-latency">--</td>
+              <td><span class="matrix-status"><span class="matrix-status-dot pending"></span> Pending</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
-              // Copy PDF bytes to WASM memory
-              if (this.Module.writeArrayToMemory) {
-                this.Module.writeArrayToMemory(pdfBytes, pdfPtr);
-              } else {
-                // Fallback: write directly to HEAP8
-                for (let i = 0; i < pdfBytes.length; i++) {
-                  this.Module.HEAP8[pdfPtr + i] = pdfBytes[i];
-                }
-              }
+      <!-- Tabs for Detailed Views -->
+      <div class="tab-container">
+        <div class="tab active" data-tab="results">Results</div>
+        <div class="tab" data-tab="snapshots">Snapshots</div>
+        <div class="tab" data-tab="console">Console</div>
+        <div class="tab" data-tab="notes">Engineering Notes</div>
+      </div>
 
-              // Call extract_text function
-              const resultPtr = this.Module._pdfium_wasm_extract_text(pdfPtr, pdfBytes.length);
+      <!-- Operation Results -->
+      <div class="tab-panel active" id="panel-results">
+        <div class="results-section" style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 6px;">
+          <div class="results-header" style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600;">Operation Output</span>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <span id="resultOperationName" style="font-size: 11px; color: var(--text-muted);">--</span>
+              <button class="snapshots-btn" id="btnClearOutput">Clear</button>
+              <button class="snapshots-btn" id="btnCopyOutput">Copy</button>
+            </div>
+          </div>
+          <div id="resultsSummary" style="padding: 12px 16px; border-bottom: 1px solid var(--border); display: none;">
+            <div style="display: flex; gap: 24px; font-family: var(--font-mono); font-size: 11px;">
+              <div><span style="color: var(--text-muted);">Pages:</span> <span id="resultPages">--</span></div>
+              <div><span style="color: var(--text-muted);">Output Size:</span> <span id="resultSize">--</span></div>
+              <div><span style="color: var(--text-muted);">Chunks:</span> <span id="resultChunks">--</span></div>
+              <div><span style="color: var(--text-muted);">Duration:</span> <span id="resultDuration">--</span></div>
+            </div>
+          </div>
+          <div id="resultsContent" style="max-height: 400px; overflow: auto;">
+            <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+              Run an operation to see results
+            </div>
+          </div>
+        </div>
+      </div>
 
-              // Free the PDF buffer
-              this.Module._free(pdfPtr);
-              pdfPtr = null;
+      <!-- Snapshots Timeline -->
+      <div class="tab-panel" id="panel-snapshots">
+        <div class="snapshots-section">
+          <div class="snapshots-header">
+            <span class="snapshots-title">Operation Snapshots</span>
+            <div class="snapshots-controls">
+              <button class="snapshots-btn" id="btnClearSnapshots">Clear</button>
+            </div>
+          </div>
+          <div class="snapshots-content">
+            <div class="snapshot-row header">
+              <div>Event</div>
+              <div>Time</div>
+              <div>WASM</div>
+              <div>WASM Delta</div>
+              <div>JS Heap</div>
+              <div>JS Delta</div>
+              <div>Latency</div>
+            </div>
+            <div id="snapshotsBody">
+              <div style="padding: 20px; text-align: center; color: var(--text-muted);">
+                Run an operation to see snapshots
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-              if (!resultPtr) {
-                throw new Error('Text extraction failed - PDF may be corrupted or encrypted');
-              }
+      <!-- Console Output -->
+      <div class="tab-panel" id="panel-console">
+        <div class="console-output" id="consoleOutput">
+          <div class="console-line info">[System] Profiler initialized. Waiting for PDF input.</div>
+        </div>
+      </div>
 
-              // Read the result string from WASM memory
-              const text = this.Module.UTF8ToString(resultPtr);
+      <!-- Engineering Notes -->
+      <div class="tab-panel" id="panel-notes">
+        <div class="notes-panel">
+          <h3>Engineering Reference: WASM Memory vs JavaScript Heap</h3>
 
-              // Free the result string
-              this.Module._pdfium_wasm_free_string(resultPtr);
+          <div class="warning-box">
+            <div class="warning-box-title">Critical: WASM Linear Memory Does Not Shrink</div>
+            <p>WebAssembly memory is allocated via <code>memory.grow()</code> and CANNOT be released back to the OS.
+            The WASM heap is a contiguous linear memory block that only grows. Freed allocations become available
+            for reuse within the same memory block, but the total size never decreases.</p>
+          </div>
 
-              return text;
-            } catch (error) {
-              // Clean up if we allocated memory
-              if (pdfPtr !== null) {
-                this.Module._free(pdfPtr);
-              }
-              console.error('Error extracting text:', error);
-              throw error;
-            }
-          }
+          <h4>WASM Memory Behavior</h4>
+          <ul>
+            <li><strong>Initial size:</strong> Typically 16-256 pages (1 page = 64KB)</li>
+            <li><strong>Growth:</strong> Triggered by <code>malloc()</code> when free list is exhausted</li>
+            <li><strong>Peak tracking:</strong> Maximum memory.buffer.byteLength observed</li>
+            <li><strong>Non-GC:</strong> No garbage collection. Manual free() required.</li>
+          </ul>
 
-          /**
-           * Convert PDF to JSON format
-           * @param {Uint8Array} pdfBytes - PDF file as byte array
-           * @returns {Promise<object>} PDF structure as JSON object
-           */
-          async pdfToJson(pdfBytes) {
-            if (!this.initialized) {
-              throw new Error('PDFium not initialized. Call init() first.');
-            }
+          <h4>JavaScript Heap Behavior</h4>
+          <ul>
+            <li><strong>Managed:</strong> V8/SpiderMonkey GC reclaims unreferenced objects</li>
+            <li><strong>Delayed:</strong> GC is opportunistic, not immediate</li>
+            <li><strong>Spikes:</strong> Temporary allocations appear as spikes before GC</li>
+            <li><strong>ArrayBuffer:</strong> PDF data in JS creates heap pressure separate from WASM</li>
+          </ul>
 
-            let pdfPtr = null;
-            try {
-              // Allocate memory for PDF data
-              pdfPtr = this.Module._malloc(pdfBytes.length);
-              if (!pdfPtr) {
-                throw new Error('Failed to allocate memory');
-              }
+          <div class="info-box">
+            <div class="info-box-title">Streaming I/O Memory Impact</div>
+            <p>Streaming reduces peak memory by avoiding full-file buffering. Instead of allocating
+            <code>O(file_size)</code> in WASM, streaming uses <code>O(chunk_size)</code> callbacks.
+            However, streaming adds latency overhead for callback invocations across the JS-WASM boundary.</p>
+          </div>
 
-              // Copy PDF bytes to WASM memory
-              if (this.Module.writeArrayToMemory) {
-                this.Module.writeArrayToMemory(pdfBytes, pdfPtr);
-              } else {
-                // Fallback: write directly to HEAP8
-                for (let i = 0; i < pdfBytes.length; i++) {
-                  this.Module.HEAP8[pdfPtr + i] = pdfBytes[i];
-                }
-              }
+          <h4>When Streaming is NOT Beneficial</h4>
+          <ul>
+            <li>Small files (&lt;1MB): Callback overhead exceeds buffering cost</li>
+            <li>Random access patterns: PDF parsing often seeks backwards</li>
+            <li>Already-loaded data: If file is in memory, streaming adds no benefit</li>
+            <li>High-frequency operations: Repeated loads should cache the document</li>
+          </ul>
 
-              // Call pdf_to_json function
-              const resultPtr = this.Module._pdfium_wasm_pdf_to_json(pdfPtr, pdfBytes.length);
+          <h4>Leak Detection Methodology</h4>
+          <ul>
+            <li>Run the same operation multiple times</li>
+            <li>If WASM memory grows monotonically: potential native leak</li>
+            <li>If JS heap stabilizes after GC: normal behavior</li>
+            <li>If JS heap grows monotonically: retained references (closures, event handlers)</li>
+          </ul>
 
-              // Free the PDF buffer
-              this.Module._free(pdfPtr);
-              pdfPtr = null;
+          <h4>Red Flags</h4>
+          <ul>
+            <li>WASM memory growing without corresponding operations</li>
+            <li>JS heap not returning to baseline after multiple GC cycles</li>
+            <li>Latency increasing over time (memory pressure)</li>
+            <li>memory.grow() calls during small operations</li>
+          </ul>
+        </div>
+      </div>
+    </main>
+  </div>
 
-              if (!resultPtr) {
-                throw new Error('PDF to JSON conversion failed');
-              }
+  <!-- Load PDFium WASM Module -->
+  <script src="./auto_pqdfium_rs.js"></script>
 
-              // Read the result JSON string
-              const jsonStr = this.Module.UTF8ToString(resultPtr);
+  <script>
+    /**
+     * ==========================================================================
+     * PDF ENGINE PROFILER - OBSERVABILITY INSTRUMENTATION
+     * ==========================================================================
+     */
 
-              // Free the result string
-              this.Module._pdfium_wasm_free_string(resultPtr);
+    'use strict';
 
-              // Parse and return JSON
-              return JSON.parse(jsonStr);
-            } catch (error) {
-              // Clean up if we allocated memory
-              if (pdfPtr !== null) {
-                this.Module._free(pdfPtr);
-              }
-              console.error('Error converting PDF to JSON:', error);
-              throw error;
-            }
-          }
+    // ==========================================================================
+    // GLOBAL STATE
+    // ==========================================================================
 
-          /**
-           * Cleanup PDFium resources
-           */
-          cleanup() {
-            if (this.initialized && this.Module) {
-              this.Module._pdfium_wasm_cleanup();
-              this.initialized = false;
-              console.log('PDFium cleaned up');
-            }
+    let Module = null;
+    let FPDF = {};
+    let isInitialized = false;
+    let currentPdfData = null;
+    let currentFileName = '';
+
+    // ==========================================================================
+    // INSTRUMENTATION CORE
+    // ==========================================================================
+
+    class WASMMemoryInstrumentation {
+      constructor() {
+        this.initialSize = 0;
+        this.currentSize = 0;
+        this.peakSize = 0;
+        this.growEvents = [];
+        this.samples = [];
+        this.lastKnownSize = 0;
+      }
+
+      init(wasmModule) {
+        if (wasmModule && wasmModule.HEAP8 && wasmModule.HEAP8.buffer) {
+          this.initialSize = wasmModule.HEAP8.buffer.byteLength;
+          this.currentSize = this.initialSize;
+          this.peakSize = this.initialSize;
+          this.lastKnownSize = this.initialSize;
+        }
+      }
+
+      sample(label = '') {
+        if (!Module || !Module.HEAP8 || !Module.HEAP8.buffer) {
+          return null;
+        }
+
+        const now = performance.now();
+        const size = Module.HEAP8.buffer.byteLength;
+
+        const grew = size > this.lastKnownSize;
+        if (grew) {
+          this.growEvents.push({
+            timestamp: now,
+            label,
+            from: this.lastKnownSize,
+            to: size,
+            delta: size - this.lastKnownSize,
+            pages: (size - this.lastKnownSize) / 65536
+          });
+        }
+
+        this.currentSize = size;
+        this.lastKnownSize = size;
+        if (size > this.peakSize) {
+          this.peakSize = size;
+        }
+
+        const sample = {
+          timestamp: now,
+          label,
+          size,
+          delta: size - this.initialSize,
+          grew,
+          peakSoFar: this.peakSize
+        };
+
+        this.samples.push(sample);
+        return sample;
+      }
+
+      getStats() {
+        return {
+          initial: this.initialSize,
+          current: this.currentSize,
+          peak: this.peakSize,
+          totalGrowth: this.currentSize - this.initialSize,
+          growEventCount: this.growEvents.length,
+          growEvents: [...this.growEvents],
+          sampleCount: this.samples.length
+        };
+      }
+
+      resetForOperation() {
+        this.samples = [];
+        this.growEvents = [];
+        this.sample('OPERATION_START');
+      }
+
+      getSamples() {
+        return [...this.samples];
+      }
+    }
+
+    class JSHeapInstrumentation {
+      constructor() {
+        this.available = typeof performance !== 'undefined' &&
+                         typeof performance.memory !== 'undefined';
+        this.samples = [];
+        this.initialUsed = 0;
+        this.peakUsed = 0;
+      }
+
+      isAvailable() {
+        return this.available;
+      }
+
+      sample(label = '') {
+        const now = performance.now();
+
+        if (!this.available) {
+          const sample = {
+            timestamp: now,
+            label,
+            used: 0,
+            total: 0,
+            limit: 0,
+            unavailable: true
+          };
+          this.samples.push(sample);
+          return sample;
+        }
+
+        const mem = performance.memory;
+        const sample = {
+          timestamp: now,
+          label,
+          used: mem.usedJSHeapSize,
+          total: mem.totalJSHeapSize,
+          limit: mem.jsHeapSizeLimit,
+          unavailable: false
+        };
+
+        if (this.samples.length === 0) {
+          this.initialUsed = sample.used;
+        }
+
+        if (sample.used > this.peakUsed) {
+          this.peakUsed = sample.used;
+        }
+
+        this.samples.push(sample);
+        return sample;
+      }
+
+      getStats() {
+        if (!this.available) {
+          return { unavailable: true };
+        }
+
+        const lastSample = this.samples[this.samples.length - 1] || {};
+
+        return {
+          initial: this.initialUsed,
+          current: lastSample.used || 0,
+          peak: this.peakUsed,
+          total: lastSample.total || 0,
+          limit: lastSample.limit || 0,
+          delta: (lastSample.used || 0) - this.initialUsed,
+          sampleCount: this.samples.length
+        };
+      }
+
+      resetForOperation() {
+        const current = this.available ? performance.memory.usedJSHeapSize : 0;
+        this.samples = [];
+        this.initialUsed = current;
+        this.peakUsed = current;
+        this.sample('OPERATION_START');
+      }
+
+      getSamples() {
+        return [...this.samples];
+      }
+    }
+
+    class LatencyInstrumentation {
+      constructor() {
+        this.operations = [];
+        this.currentOp = null;
+      }
+
+      startOperation(name, mode) {
+        this.currentOp = {
+          name,
+          mode,
+          startTime: performance.now(),
+          ttfb: null,
+          chunks: [],
+          endTime: null,
+          totalDuration: null
+        };
+        return this.currentOp;
+      }
+
+      recordTTFB() {
+        if (this.currentOp && this.currentOp.ttfb === null) {
+          this.currentOp.ttfb = performance.now() - this.currentOp.startTime;
+        }
+      }
+
+      recordChunk(size = 0) {
+        if (this.currentOp) {
+          this.currentOp.chunks.push({
+            timestamp: performance.now(),
+            elapsed: performance.now() - this.currentOp.startTime,
+            size
+          });
+
+          if (this.currentOp.ttfb === null) {
+            this.recordTTFB();
           }
         }
-    </script>
-    <script>
-        let pdfium = null;
-        let currentPdfBytes = null;
+      }
 
-        // Initialize PDFium WASM
-        async function initPdfium() {
-            try {
-                showStatus('Initializing PDFium WASM...', 'info');
-                pdfium = new PdfiumWasm();
-                await pdfium.init();
-                showStatus('PDFium initialized successfully!', 'success');
-            } catch (error) {
-                showStatus('Failed to initialize: ' + error.message, 'error');
-                console.error(error);
-            }
+      endOperation() {
+        if (this.currentOp) {
+          this.currentOp.endTime = performance.now();
+          this.currentOp.totalDuration = this.currentOp.endTime - this.currentOp.startTime;
+          this.operations.push(this.currentOp);
+
+          const op = this.currentOp;
+          this.currentOp = null;
+          return op;
+        }
+        return null;
+      }
+
+      getOperations() {
+        return [...this.operations];
+      }
+
+      getStatsFor(name, mode) {
+        const matches = this.operations.filter(op => op.name === name && op.mode === mode);
+        if (matches.length === 0) return null;
+
+        const last = matches[matches.length - 1];
+        return {
+          ttfb: last.ttfb,
+          totalDuration: last.totalDuration,
+          chunkCount: last.chunks.length,
+          avgChunkTime: last.chunks.length > 1
+            ? last.chunks.reduce((sum, c, i, arr) =>
+                i > 0 ? sum + (c.elapsed - arr[i-1].elapsed) : sum, 0) / (last.chunks.length - 1)
+            : 0
+        };
+      }
+    }
+
+    class ProfilerSession {
+      constructor(name, mode) {
+        this.name = name;
+        this.mode = mode;
+        this.snapshots = [];
+        this.startTime = null;
+        this.endTime = null;
+
+        this.wasmInstr = wasmInstrumentation;
+        this.jsInstr = jsInstrumentation;
+        this.latencyInstr = latencyInstrumentation;
+      }
+
+      start() {
+        this.startTime = performance.now();
+        this.wasmInstr.resetForOperation();
+        this.jsInstr.resetForOperation();
+        this.latencyInstr.startOperation(this.name, this.mode);
+        this.snapshot('START');
+
+        logConsole(`[Profiler] Started: ${this.name} (${this.mode})`, 'info');
+      }
+
+      snapshot(label) {
+        const wasm = this.wasmInstr.sample(label);
+        const js = this.jsInstr.sample(label);
+        const elapsed = performance.now() - this.startTime;
+
+        const snap = {
+          label,
+          elapsed,
+          wasm,
+          js,
+          timestamp: performance.now()
+        };
+
+        this.snapshots.push(snap);
+        return snap;
+      }
+
+      recordChunk(size = 0) {
+        this.latencyInstr.recordChunk(size);
+      }
+
+      end() {
+        this.snapshot('END');
+        this.endTime = performance.now();
+        const latency = this.latencyInstr.endOperation();
+
+        const summary = this.getSummary();
+        logConsole(`[Profiler] Completed: ${this.name} (${this.mode}) in ${summary.duration.toFixed(2)}ms`, 'success');
+        logConsole(`  WASM: ${formatBytes(summary.wasm.peak)} peak (${summary.wasm.growEvents} grows)`, 'memory');
+        logConsole(`  JS: ${formatBytes(summary.js.peak)} peak`, 'memory');
+
+        return summary;
+      }
+
+      getSummary() {
+        const wasmStats = this.wasmInstr.getStats();
+        const jsStats = this.jsInstr.getStats();
+        const latencyStats = this.latencyInstr.getStatsFor(this.name, this.mode);
+
+        return {
+          name: this.name,
+          mode: this.mode,
+          duration: this.endTime - this.startTime,
+          wasm: {
+            initial: wasmStats.initial,
+            peak: wasmStats.peak,
+            delta: wasmStats.totalGrowth,
+            growEvents: wasmStats.growEventCount
+          },
+          js: {
+            initial: jsStats.initial || 0,
+            peak: jsStats.peak || 0,
+            delta: jsStats.delta || 0,
+            unavailable: jsStats.unavailable || false
+          },
+          latency: {
+            ttfb: latencyStats?.ttfb || 0,
+            total: latencyStats?.totalDuration || 0,
+            chunks: latencyStats?.chunkCount || 0
+          },
+          snapshots: [...this.snapshots]
+        };
+      }
+    }
+
+    // ==========================================================================
+    // GLOBAL INSTRUMENTATION INSTANCES
+    // ==========================================================================
+
+    const wasmInstrumentation = new WASMMemoryInstrumentation();
+    const jsInstrumentation = new JSHeapInstrumentation();
+    const latencyInstrumentation = new LatencyInstrumentation();
+
+    const sessionResults = {};
+
+    let monitoringInterval = null;
+    const monitoringSamples = { wasm: [], js: [], timestamps: [] };
+
+    // ==========================================================================
+    // UI HELPERS
+    // ==========================================================================
+
+    function formatBytes(bytes) {
+      if (bytes === 0 || bytes === undefined || bytes === null) return '0 B';
+      if (isNaN(bytes)) return '--';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(Math.abs(bytes)) / Math.log(k));
+      const value = bytes / Math.pow(k, i);
+      return value.toFixed(2) + ' ' + sizes[i];
+    }
+
+    function formatDuration(ms) {
+      if (ms === undefined || ms === null || isNaN(ms)) return '--';
+      if (ms < 1) return (ms * 1000).toFixed(0) + 'us';
+      if (ms < 1000) return ms.toFixed(2) + 'ms';
+      return (ms / 1000).toFixed(2) + 's';
+    }
+
+    function logConsole(message, type = 'info') {
+      const output = document.getElementById('consoleOutput');
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      line.textContent = `[${new Date().toISOString().substr(11, 12)}] ${message}`;
+      output.appendChild(line);
+      output.scrollTop = output.scrollHeight;
+    }
+
+    let lastOperationOutput = '';
+
+    async function clearMemoryBeforeOperation() {
+      logConsole('[Memory] Clearing memory before operation...', 'info');
+
+      lastOperationOutput = '';
+
+      monitoringSamples.wasm.length = 0;
+      monitoringSamples.js.length = 0;
+      monitoringSamples.timestamps.length = 0;
+
+      if (typeof gc === 'function') {
+        gc();
+        logConsole('[Memory] Explicit GC triggered', 'info');
+      }
+
+      await new Promise(r => setTimeout(r, 50));
+
+      if (Module && Module.HEAP8) {
+        const currentWasm = Module.HEAP8.buffer.byteLength;
+        wasmInstrumentation.lastKnownSize = currentWasm;
+        logConsole(`[Memory] WASM baseline reset: ${formatBytes(currentWasm)}`, 'memory');
+      }
+
+      if (jsInstrumentation.isAvailable()) {
+        const currentJs = performance.memory.usedJSHeapSize;
+        jsInstrumentation.initialUsed = currentJs;
+        jsInstrumentation.peakUsed = currentJs;
+        logConsole(`[Memory] JS heap baseline reset: ${formatBytes(currentJs)}`, 'memory');
+      }
+
+      logConsole('[Memory] Ready for operation', 'success');
+    }
+
+    function displayResults(operationName, mode, result, outputData) {
+      const summary = document.getElementById('resultsSummary');
+      const content = document.getElementById('resultsContent');
+      const opName = document.getElementById('resultOperationName');
+
+      opName.textContent = `${operationName} (${mode})`;
+      summary.style.display = 'block';
+
+      document.getElementById('resultPages').textContent = outputData.pageCount || '--';
+      document.getElementById('resultSize').textContent = formatBytes(outputData.outputSize || outputData.textLength || outputData.jsonLength || 0);
+      document.getElementById('resultChunks').textContent = outputData.chunkCount || '--';
+      document.getElementById('resultDuration').textContent = formatDuration(result.duration);
+
+      if (outputData.text !== undefined) {
+        const preview = outputData.text.length > 50000
+          ? outputData.text.substring(0, 50000) + '\n\n... [truncated, showing first 50KB] ...'
+          : outputData.text;
+        content.innerHTML = `<div class="result-text">${escapeHtml(preview)}</div>`;
+        lastOperationOutput = outputData.text;
+      } else if (outputData.json !== undefined) {
+        const jsonStr = typeof outputData.json === 'string' ? outputData.json : JSON.stringify(outputData.json, null, 2);
+        const preview = jsonStr.length > 100000
+          ? jsonStr.substring(0, 100000) + '\n\n... [truncated, showing first 100KB] ...'
+          : jsonStr;
+        content.innerHTML = `<div class="result-json">${syntaxHighlightJson(preview)}</div>`;
+        lastOperationOutput = jsonStr;
+      } else if (outputData.outputSize !== undefined) {
+        content.innerHTML = `
+          <div class="result-binary">
+            <div style="font-size: 48px; margin-bottom: 12px;">PDF</div>
+            <div style="font-size: 14px; font-weight: 600;">PDF Saved Successfully</div>
+            <div class="result-binary-info">
+              <div><span style="color: var(--text-muted);">Size:</span> ${formatBytes(outputData.outputSize)}</div>
+              <div><span style="color: var(--text-muted);">Chunks:</span> ${outputData.chunkCount}</div>
+              <div><span style="color: var(--text-muted);">Pages:</span> ${outputData.pageCount || '--'}</div>
+            </div>
+          </div>
+        `;
+        lastOperationOutput = `[Binary PDF Output: ${formatBytes(outputData.outputSize)}]`;
+      } else {
+        content.innerHTML = `<div style="padding: 20px; color: var(--text-muted);">No output data available</div>`;
+        lastOperationOutput = '';
+      }
+
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      document.querySelector('.tab[data-tab="results"]').classList.add('active');
+      document.getElementById('panel-results').classList.add('active');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function syntaxHighlightJson(json) {
+      return escapeHtml(json)
+        .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+        .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+        .replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+        .replace(/: (true|false)/g, ': <span class="json-bool">$1</span>')
+        .replace(/: (null)/g, ': <span class="json-null">$1</span>');
+    }
+
+    function updateMetricsDisplay() {
+      const wasmStats = wasmInstrumentation.getStats();
+      const jsStats = jsInstrumentation.getStats();
+
+      document.getElementById('headerWasmMemory').textContent = formatBytes(wasmStats.current);
+      document.getElementById('headerJsMemory').textContent =
+        jsStats.unavailable ? 'N/A' : formatBytes(jsStats.current);
+      document.getElementById('headerSampleCount').textContent =
+        wasmStats.sampleCount + jsStats.sampleCount;
+
+      document.getElementById('metricWasmCurrent').textContent = formatBytes(wasmStats.current);
+      document.getElementById('metricWasmPeak').textContent = formatBytes(wasmStats.peak);
+      document.getElementById('metricWasmDelta').textContent =
+        (wasmStats.totalGrowth >= 0 ? '+' : '') + formatBytes(wasmStats.totalGrowth);
+      document.getElementById('metricWasmDelta').className =
+        `metric-delta ${wasmStats.totalGrowth > 0 ? 'positive' : 'neutral'}`;
+      document.getElementById('metricWasmGrows').textContent =
+        `${wasmStats.growEventCount} grow${wasmStats.growEventCount !== 1 ? 's' : ''}`;
+
+      if (!jsStats.unavailable) {
+        document.getElementById('metricJsCurrent').textContent = formatBytes(jsStats.current);
+        document.getElementById('metricJsPeak').textContent = formatBytes(jsStats.peak);
+        document.getElementById('metricJsDelta').textContent =
+          (jsStats.delta >= 0 ? '+' : '') + formatBytes(jsStats.delta);
+        document.getElementById('metricJsDelta').className =
+          `metric-delta ${jsStats.delta > 1024*1024 ? 'positive' : jsStats.delta < -1024*1024 ? 'negative' : 'neutral'}`;
+        document.getElementById('metricJsTotal').textContent = `Total: ${formatBytes(jsStats.total)}`;
+      } else {
+        document.getElementById('metricJsCurrent').textContent = 'N/A';
+        document.getElementById('metricJsPeak').textContent = 'N/A';
+        document.getElementById('metricJsDelta').textContent = 'API unavailable';
+        document.getElementById('metricJsTotal').textContent = 'Chrome only';
+      }
+    }
+
+    function updateMatrixRow(key, result) {
+      const prefix = key;
+      const row = document.querySelector(`#${prefix}-wasm`)?.closest('tr');
+      if (!row) return;
+
+      document.getElementById(`${prefix}-wasm`).textContent = formatBytes(result.wasm.peak);
+      document.getElementById(`${prefix}-js`).textContent =
+        result.js.unavailable ? 'N/A' : formatBytes(result.js.peak);
+      document.getElementById(`${prefix}-ttfb`).textContent = formatDuration(result.latency.ttfb);
+      document.getElementById(`${prefix}-latency`).textContent = formatDuration(result.latency.total);
+
+      const statusCell = row.querySelector('.matrix-status');
+      statusCell.innerHTML = '<span class="matrix-status-dot complete"></span> Complete';
+
+      updateMatrixColors();
+    }
+
+    function updateMatrixColors() {
+      const comparisons = [
+        ['pdfium-extract-normal', 'pdfium-extract-stream'],
+        ['pdfium-load-normal', 'pdfium-load-stream'],
+        ['qpdf-json-normal', 'qpdf-json-stream']
+      ];
+
+      comparisons.forEach(([normalKey, streamKey]) => {
+        const normalResult = sessionResults[normalKey];
+        const streamResult = sessionResults[streamKey];
+
+        if (normalResult && streamResult) {
+          const normalWasm = document.getElementById(`${normalKey}-wasm`);
+          const streamWasm = document.getElementById(`${streamKey}-wasm`);
+
+          if (normalResult.wasm.peak > streamResult.wasm.peak) {
+            normalWasm.className = 'value-bad';
+            streamWasm.className = 'value-good';
+          } else if (normalResult.wasm.peak < streamResult.wasm.peak) {
+            normalWasm.className = 'value-good';
+            streamWasm.className = 'value-bad';
+          }
+
+          const normalLatency = document.getElementById(`${normalKey}-latency`);
+          const streamLatency = document.getElementById(`${streamKey}-latency`);
+
+          if (normalResult.latency.total > streamResult.latency.total) {
+            normalLatency.className = 'value-bad';
+            streamLatency.className = 'value-good';
+          } else if (normalResult.latency.total < streamResult.latency.total) {
+            normalLatency.className = 'value-good';
+            streamLatency.className = 'value-bad';
+          }
+        }
+      });
+    }
+
+    function renderSnapshots(snapshots) {
+      const body = document.getElementById('snapshotsBody');
+
+      if (snapshots.length === 0) {
+        body.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-muted);">No snapshots yet</div>';
+        return;
+      }
+
+      let html = '';
+      let prevWasm = null;
+      let prevJs = null;
+
+      snapshots.forEach((snap, idx) => {
+        const wasmDelta = prevWasm !== null ? snap.wasm.size - prevWasm : 0;
+        const jsDelta = prevJs !== null && !snap.js.unavailable ? snap.js.used - prevJs : 0;
+
+        const isGrow = snap.wasm.grew;
+
+        html += `
+          <div class="snapshot-row">
+            <div class="snapshot-label">
+              <span class="snapshot-marker ${isGrow ? 'memory-grow' : ''}"></span>
+              ${snap.label}
+            </div>
+            <div>${formatDuration(snap.elapsed)}</div>
+            <div style="color: var(--wasm-color)">${formatBytes(snap.wasm.size)}</div>
+            <div style="color: ${wasmDelta > 0 ? 'var(--accent-red)' : wasmDelta < 0 ? 'var(--accent-green)' : 'var(--text-muted)'}">
+              ${wasmDelta !== 0 ? (wasmDelta > 0 ? '+' : '') + formatBytes(wasmDelta) : '--'}
+            </div>
+            <div style="color: var(--js-color)">${snap.js.unavailable ? 'N/A' : formatBytes(snap.js.used)}</div>
+            <div style="color: ${jsDelta > 0 ? 'var(--accent-red)' : jsDelta < 0 ? 'var(--accent-green)' : 'var(--text-muted)'}">
+              ${!snap.js.unavailable && jsDelta !== 0 ? (jsDelta > 0 ? '+' : '') + formatBytes(jsDelta) : '--'}
+            </div>
+            <div>${formatDuration(snap.elapsed)}</div>
+          </div>
+        `;
+
+        prevWasm = snap.wasm.size;
+        if (!snap.js.unavailable) prevJs = snap.js.used;
+      });
+
+      body.innerHTML = html;
+    }
+
+    // ==========================================================================
+    // GRAPH RENDERING
+    // ==========================================================================
+
+    function drawMemoryGraph() {
+      const canvas = document.getElementById('memoryGraph');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      const width = rect.width;
+      const height = rect.height;
+      const padding = { top: 10, right: 10, bottom: 20, left: 50 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary');
+      ctx.fillRect(0, 0, width, height);
+
+      const wasmSamples = monitoringSamples.wasm;
+      const jsSamples = monitoringSamples.js;
+
+      if (wasmSamples.length < 2) {
+        ctx.fillStyle = '#6e7681';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Waiting for data...', width / 2, height / 2);
+        return;
+      }
+
+      const allValues = [...wasmSamples, ...jsSamples.filter(v => v > 0)];
+      const maxVal = Math.max(...allValues);
+      const minVal = Math.min(...allValues);
+      const range = maxVal - minVal || 1;
+
+      ctx.strokeStyle = '#30363d';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = padding.top + (chartHeight / 4) * i;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(width - padding.right, y);
+        ctx.stroke();
+      }
+
+      ctx.strokeStyle = '#f97316';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      wasmSamples.forEach((val, i) => {
+        const x = padding.left + (i / (wasmSamples.length - 1)) * chartWidth;
+        const y = padding.top + chartHeight - ((val - minVal) / range) * chartHeight;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      if (jsSamples.some(v => v > 0)) {
+        ctx.strokeStyle = '#8b5cf6';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        jsSamples.forEach((val, i) => {
+          const x = padding.left + (i / (jsSamples.length - 1)) * chartWidth;
+          const y = padding.top + chartHeight - ((val - minVal) / range) * chartHeight;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#6e7681';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(formatBytes(maxVal), padding.left - 5, padding.top + 10);
+      ctx.fillText(formatBytes(minVal), padding.left - 5, height - padding.bottom);
+    }
+
+    function drawLatencyGraph() {
+      const canvas = document.getElementById('latencyGraph');
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * window.devicePixelRatio;
+      canvas.height = rect.height * window.devicePixelRatio;
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      const width = rect.width;
+      const height = rect.height;
+      const padding = { top: 10, right: 10, bottom: 20, left: 50 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg-primary');
+      ctx.fillRect(0, 0, width, height);
+
+      const operations = latencyInstrumentation.getOperations();
+
+      if (operations.length === 0) {
+        ctx.fillStyle = '#6e7681';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Run operations to see latency data', width / 2, height / 2);
+        return;
+      }
+
+      const barWidth = Math.min(40, chartWidth / operations.length - 10);
+      const maxLatency = Math.max(...operations.map(op => op.totalDuration));
+
+      operations.forEach((op, i) => {
+        const x = padding.left + (i / operations.length) * chartWidth + 5;
+        const barHeight = (op.totalDuration / maxLatency) * chartHeight;
+        const y = padding.top + chartHeight - barHeight;
+
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x, y, barWidth / 2, barHeight);
+
+        if (op.ttfb) {
+          const ttfbHeight = (op.ttfb / maxLatency) * chartHeight;
+          ctx.fillStyle = '#58a6ff';
+          ctx.fillRect(x + barWidth / 2, padding.top + chartHeight - ttfbHeight, barWidth / 2, ttfbHeight);
         }
 
-        function showStatus(message, type) {
-            const status = document.getElementById('status');
-            status.className = 'status ' + type;
-            status.textContent = message;
-            status.style.display = 'block';
+        ctx.fillStyle = '#6e7681';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.save();
+        ctx.translate(x + barWidth / 2, height - 5);
+        ctx.rotate(-0.3);
+        const label = `${op.name.substring(0, 8)}`;
+        ctx.fillText(label, 0, 0);
+        ctx.restore();
+      });
+
+      ctx.fillStyle = '#6e7681';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(formatDuration(maxLatency), padding.left - 5, padding.top + 10);
+      ctx.fillText('0ms', padding.left - 5, height - padding.bottom);
+    }
+
+    // ==========================================================================
+    // CONTINUOUS MONITORING
+    // ==========================================================================
+
+    function startContinuousMonitoring() {
+      if (monitoringInterval) return;
+
+      monitoringInterval = setInterval(() => {
+        if (!Module || !Module.HEAP8) return;
+
+        const wasmSize = Module.HEAP8.buffer.byteLength;
+        const jsUsed = jsInstrumentation.isAvailable() ? performance.memory.usedJSHeapSize : 0;
+
+        monitoringSamples.wasm.push(wasmSize);
+        monitoringSamples.js.push(jsUsed);
+        monitoringSamples.timestamps.push(performance.now());
+
+        if (monitoringSamples.wasm.length > 300) {
+          monitoringSamples.wasm.shift();
+          monitoringSamples.js.shift();
+          monitoringSamples.timestamps.shift();
         }
 
-        // File upload handling
-        const uploadArea = document.getElementById('uploadArea');
-        const fileInput = document.getElementById('fileInput');
-        const extractBtn = document.getElementById('extractBtn');
-        const jsonBtn = document.getElementById('jsonBtn');
-        const output = document.getElementById('output');
+        updateMetricsDisplay();
+        drawMemoryGraph();
+      }, 100);
+    }
 
-        uploadArea.onclick = () => fileInput.click();
+    function stopContinuousMonitoring() {
+      if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        monitoringInterval = null;
+      }
+    }
 
-        uploadArea.ondragover = (e) => {
-            e.preventDefault();
-            uploadArea.classList.add('dragover');
-        };
+    // ==========================================================================
+    // PDF ENGINE ADAPTERS
+    // ==========================================================================
 
-        uploadArea.ondragleave = () => {
-            uploadArea.classList.remove('dragover');
-        };
+    async function pdfiumExtractNormal(pdfData, session) {
+      session.snapshot('ALLOCATE_WASM_BUFFER');
+      const wasmBuffer = Module._malloc(pdfData.byteLength);
+      Module.HEAPU8.set(pdfData, wasmBuffer);
+      session.snapshot('BUFFER_COPIED');
 
-        uploadArea.ondrop = (e) => {
-            e.preventDefault();
-            uploadArea.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type === 'application/pdf') {
-                handleFile(file);
-            } else {
-                showStatus('Please upload a PDF file', 'error');
+      session.snapshot('LOAD_DOCUMENT');
+      const doc = FPDF.LoadMemDocument(wasmBuffer, pdfData.byteLength, '');
+      if (!doc) {
+        Module._free(wasmBuffer);
+        throw new Error('Failed to load PDF');
+      }
+      session.recordChunk();
+      session.snapshot('DOCUMENT_LOADED');
+
+      const pageCount = FPDF.GetPageCount(doc);
+      let totalText = '';
+
+      for (let i = 0; i < pageCount; i++) {
+        session.snapshot(`LOAD_PAGE_${i}`);
+        const page = FPDF.LoadPage(doc, i);
+        if (!page) continue;
+
+        const textPage = FPDF.Text_LoadPage(page);
+        if (textPage) {
+          const charCount = FPDF.Text_CountChars(textPage);
+          if (charCount > 0) {
+            const bufferSize = (charCount + 1) * 2;
+            const textBuffer = Module._malloc(bufferSize);
+            FPDF.Text_GetText(textPage, 0, charCount, textBuffer);
+
+            const utf16Buffer = new Uint8Array(Module.HEAPU8.buffer, textBuffer, charCount * 2);
+            const uint16Array = new Uint16Array(utf16Buffer.buffer, utf16Buffer.byteOffset, charCount);
+            totalText += String.fromCharCode.apply(null, Array.from(uint16Array).filter(c => c !== 0));
+
+            Module._free(textBuffer);
+            session.recordChunk(charCount);
+          }
+          FPDF.Text_ClosePage(textPage);
+        }
+        FPDF.ClosePage(page);
+        session.snapshot(`PAGE_${i}_COMPLETE`);
+      }
+
+      FPDF.CloseDocument(doc);
+      Module._free(wasmBuffer);
+      session.snapshot('CLEANUP_COMPLETE');
+
+      return { pageCount, textLength: totalText.length, text: totalText };
+    }
+
+    async function pdfiumExtractStreaming(pdfData, session) {
+      session.snapshot('CREATE_CALLBACK');
+
+      const callbackPtr = Module.addFunction(
+        (userData, position, bufferPtr, size) => {
+          try {
+            const end = Math.min(position + size, pdfData.length);
+            const bytesToRead = end - position;
+            if (bytesToRead <= 0) return 0;
+            const chunk = pdfData.subarray(position, end);
+            Module.HEAPU8.set(chunk, bufferPtr);
+            session.recordChunk(bytesToRead);
+            return 1;
+          } catch (e) {
+            return 0;
+          }
+        },
+        'iiiii'
+      );
+      session.snapshot('CALLBACK_CREATED');
+
+      session.snapshot('STREAMING_LOAD');
+      const doc = Module._IPDF_StreamingIO_LoadDocument(pdfData.length, callbackPtr, 0, 0);
+      if (!doc) {
+        Module.removeFunction(callbackPtr);
+        throw new Error('Failed to load PDF with streaming');
+      }
+      session.snapshot('DOCUMENT_LOADED');
+
+      const pageCount = Module._IPDF_StreamingIO_GetPageCount(doc);
+      let totalText = '';
+
+      for (let i = 0; i < pageCount; i++) {
+        session.snapshot(`EXTRACT_PAGE_${i}`);
+        const textPtr = Module._IPDF_StreamingIO_GetPageText(doc, i);
+        if (textPtr) {
+          const text = Module.UTF8ToString(textPtr);
+          totalText += text;
+          Module._IPDF_StreamingIO_FreeString(textPtr);
+          session.recordChunk(text.length);
+        }
+        session.snapshot(`PAGE_${i}_COMPLETE`);
+      }
+
+      FPDF.CloseDocument(doc);
+      Module.removeFunction(callbackPtr);
+      session.snapshot('CLEANUP_COMPLETE');
+
+      return { pageCount, textLength: totalText.length, text: totalText };
+    }
+
+    async function pdfiumLoadNormal(pdfData, session) {
+      session.snapshot('ALLOCATE_WASM_BUFFER');
+      const wasmBuffer = Module._malloc(pdfData.byteLength);
+      Module.HEAPU8.set(pdfData, wasmBuffer);
+      session.snapshot('BUFFER_COPIED');
+
+      const doc = FPDF.LoadMemDocument(wasmBuffer, pdfData.byteLength, '');
+      if (!doc) {
+        Module._free(wasmBuffer);
+        throw new Error('Failed to load PDF');
+      }
+      session.recordChunk();
+      session.snapshot('DOCUMENT_LOADED');
+
+      Module._free(wasmBuffer);
+      session.snapshot('INPUT_FREED');
+
+      const pageCount = FPDF.GetPageCount(doc);
+
+      const chunks = [];
+      const writeCallbackPtr = Module.addFunction(
+        (userData, dataPtr, size) => {
+          const chunk = new Uint8Array(Module.HEAPU8.buffer, dataPtr, size).slice();
+          chunks.push(chunk);
+          session.recordChunk(size);
+          return 1;
+        },
+        'iiii'
+      );
+
+      session.snapshot('SAVE_START');
+      const saveResult = Module._IPDF_StreamingIO_SaveWithCallback(doc, writeCallbackPtr, 0, 0);
+      session.snapshot('SAVE_COMPLETE');
+
+      Module.removeFunction(writeCallbackPtr);
+      FPDF.CloseDocument(doc);
+
+      const totalSize = chunks.reduce((sum, c) => sum + c.length, 0);
+      session.snapshot('CLEANUP_COMPLETE');
+
+      return { pageCount, outputSize: totalSize, chunkCount: chunks.length };
+    }
+
+    async function pdfiumLoadStreaming(pdfData, session) {
+      session.snapshot('CREATE_READ_CALLBACK');
+
+      const readCallbackPtr = Module.addFunction(
+        (userData, position, bufferPtr, size) => {
+          try {
+            const end = Math.min(position + size, pdfData.length);
+            const bytesToRead = end - position;
+            if (bytesToRead <= 0) return 0;
+            const chunk = pdfData.subarray(position, end);
+            Module.HEAPU8.set(chunk, bufferPtr);
+            session.recordChunk(bytesToRead);
+            return 1;
+          } catch (e) {
+            return 0;
+          }
+        },
+        'iiiii'
+      );
+      session.snapshot('READ_CALLBACK_CREATED');
+
+      const doc = Module._IPDF_StreamingIO_LoadDocument(pdfData.length, readCallbackPtr, 0, 0);
+      if (!doc) {
+        Module.removeFunction(readCallbackPtr);
+        throw new Error('Failed to load PDF with streaming');
+      }
+      session.snapshot('DOCUMENT_LOADED');
+
+      const pageCount = Module._IPDF_StreamingIO_GetPageCount(doc);
+
+      const chunks = [];
+      const writeCallbackPtr = Module.addFunction(
+        (userData, dataPtr, size) => {
+          const chunk = new Uint8Array(Module.HEAPU8.buffer, dataPtr, size).slice();
+          chunks.push(chunk);
+          session.recordChunk(size);
+          return 1;
+        },
+        'iiii'
+      );
+
+      session.snapshot('SAVE_START');
+      Module._IPDF_StreamingIO_SaveWithCallback(doc, writeCallbackPtr, 0, 0);
+      session.snapshot('SAVE_COMPLETE');
+
+      Module.removeFunction(writeCallbackPtr);
+      Module.removeFunction(readCallbackPtr);
+      FPDF.CloseDocument(doc);
+
+      const totalSize = chunks.reduce((sum, c) => sum + c.length, 0);
+      session.snapshot('CLEANUP_COMPLETE');
+
+      return { pageCount, outputSize: totalSize, chunkCount: chunks.length };
+    }
+
+    async function qpdfJsonNormal(pdfData, session) {
+      session.snapshot('ALLOCATE_WASM_BUFFER');
+      const wasmBuffer = Module._malloc(pdfData.byteLength);
+      Module.HEAPU8.set(pdfData, wasmBuffer);
+      session.snapshot('BUFFER_COPIED');
+      session.recordChunk();
+
+      session.snapshot('CONVERT_TO_JSON');
+      const jsonPtr = FPDF.IPDF_QPDF_PDFToJSON(wasmBuffer, pdfData.byteLength, 2);
+      session.snapshot('CONVERSION_COMPLETE');
+
+      Module._free(wasmBuffer);
+
+      if (!jsonPtr) {
+        throw new Error('QPDF conversion failed');
+      }
+
+      const jsonString = Module.UTF8ToString(jsonPtr);
+      FPDF.IPDF_QPDF_FreeString(jsonPtr);
+      session.snapshot('CLEANUP_COMPLETE');
+      session.recordChunk(jsonString.length);
+
+      return { jsonLength: jsonString.length, json: jsonString };
+    }
+
+    async function qpdfJsonStreaming(pdfData, session) {
+      session.snapshot('CREATE_CALLBACKS');
+      logConsole('[QPDF Stream JSON] Starting...', 'info');
+      logConsole(`[QPDF Stream JSON] PDF size: ${pdfData.length} bytes`, 'info');
+
+      let readCount = 0;
+      let writeCount = 0;
+      let lastLogTime = Date.now();
+
+      const readCallbackPtr = Module.addFunction(
+        (userData, position, bufferPtr, size) => {
+          try {
+            readCount++;
+            const now = Date.now();
+            if (readCount <= 3 || now - lastLogTime > 1000) {
+              logConsole(`[QPDF Read] #${readCount}: pos=${position}, size=${size}`, 'info');
+              lastLogTime = now;
             }
-        };
-
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                handleFile(file);
+            // Sanity check for position
+            if (position < 0 || position >= pdfData.length) {
+              if (position >= pdfData.length) {
+                return 0; // EOF
+              }
+              logConsole(`[QPDF Read] Invalid position: ${position}`, 'error');
+              return -1;
             }
-        };
+            const end = Math.min(position + size, pdfData.length);
+            const bytesToRead = end - position;
+            if (bytesToRead <= 0) return 0;
+            const chunk = pdfData.subarray(position, end);
+            Module.HEAPU8.set(chunk, bufferPtr);
+            session.recordChunk(bytesToRead);
+            return bytesToRead;
+          } catch (e) {
+            logConsole(`[QPDF Read] Error: ${e.message}`, 'error');
+            return -1;
+          }
+        },
+        'iiiii'
+      );
 
-        async function handleFile(file) {
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                currentPdfBytes = new Uint8Array(arrayBuffer);
-
-                document.getElementById('fileInfo').innerHTML = `
-                    <div class="file-info">
-                        <strong>File:</strong> ${file.name}<br>
-                        <strong>Size:</strong> ${(file.size / 1024).toFixed(2)} KB
-                    </div>
-                `;
-
-                document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(2);
-                document.getElementById('stats').style.display = 'grid';
-
-                extractBtn.disabled = false;
-                jsonBtn.disabled = false;
-                output.textContent = '';
-                showStatus('PDF loaded successfully!', 'success');
-            } catch (error) {
-                showStatus('Error loading file: ' + error.message, 'error');
+      const jsonChunks = [];
+      const writeCallbackPtr = Module.addFunction(
+        (userData, dataPtr, size) => {
+          try {
+            writeCount++;
+            if (writeCount <= 3 || writeCount % 50 === 0) {
+              logConsole(`[QPDF Write] #${writeCount}: size=${size}`, 'info');
             }
+            const chunk = new Uint8Array(Module.HEAPU8.buffer, dataPtr, size).slice();
+            jsonChunks.push(chunk);
+            session.recordChunk(size);
+            return 1;
+          } catch (e) {
+            logConsole(`[QPDF Write] Error: ${e.message}`, 'error');
+            return 0;
+          }
+        },
+        'iiii'
+      );
+      session.snapshot('CALLBACKS_CREATED');
+      logConsole('[QPDF Stream JSON] Callbacks registered, calling StreamingToJSON...', 'info');
+
+      session.snapshot('STREAMING_CONVERT');
+      let result;
+      try {
+        result = FPDF.IPDF_QPDF_StreamingToJSON(
+          pdfData.length,
+          readCallbackPtr,
+          0,
+          2,
+          writeCallbackPtr,
+          0
+        );
+      } catch (e) {
+        logConsole(`[QPDF Stream JSON] Exception: ${e.message}`, 'error');
+        Module.removeFunction(readCallbackPtr);
+        Module.removeFunction(writeCallbackPtr);
+        throw e;
+      }
+      session.snapshot('CONVERSION_COMPLETE');
+      logConsole(`[QPDF Stream JSON] Returned: ${result}, reads: ${readCount}, writes: ${writeCount}`, 'info');
+
+      Module.removeFunction(readCallbackPtr);
+      Module.removeFunction(writeCallbackPtr);
+
+      if (!result) {
+        const errorPtr = FPDF.IPDF_QPDF_StreamingGetLastError();
+        const error = errorPtr ? Module.UTF8ToString(errorPtr) : 'Unknown error';
+        logConsole(`[QPDF Stream JSON] Failed: ${error}`, 'error');
+        throw new Error(`QPDF streaming conversion failed: ${error}`);
+      }
+
+      const totalSize = jsonChunks.reduce((sum, c) => sum + c.length, 0);
+      const decoder = new TextDecoder('utf-8');
+      const jsonString = jsonChunks.map(c => decoder.decode(c)).join('');
+      session.snapshot('CLEANUP_COMPLETE');
+      logConsole(`[QPDF Stream JSON] Success: ${totalSize} bytes`, 'success');
+
+      return { jsonLength: totalSize, chunkCount: jsonChunks.length, json: jsonString };
+    }
+
+    async function qpdfLoadStreaming(pdfData, session) {
+      session.snapshot('CREATE_READ_CALLBACK');
+      logConsole('[QPDF Stream Load] Starting...', 'info');
+      logConsole(`[QPDF Stream Load] PDF size: ${pdfData.length} bytes`, 'info');
+
+      let readCount = 0;
+      let writeCount = 0;
+
+      const readCallbackPtr = Module.addFunction(
+        (userData, position, bufferPtr, size) => {
+          try {
+            readCount++;
+            if (readCount <= 3 || readCount % 100 === 0) {
+              logConsole(`[QPDF Load Read] #${readCount}: pos=${position}, size=${size}`, 'info');
+            }
+            if (position < 0 || position >= pdfData.length) {
+              if (position >= pdfData.length) return 0;
+              return -1;
+            }
+            const end = Math.min(position + size, pdfData.length);
+            const bytesToRead = end - position;
+            if (bytesToRead <= 0) return 0;
+            const chunk = pdfData.subarray(position, end);
+            Module.HEAPU8.set(chunk, bufferPtr);
+            session.recordChunk(bytesToRead);
+            return bytesToRead;
+          } catch (e) {
+            logConsole(`[QPDF Load Read] Error: ${e.message}`, 'error');
+            return -1;
+          }
+        },
+        'iiiii'
+      );
+      session.snapshot('READ_CALLBACK_CREATED');
+
+      session.snapshot('STREAMING_OPEN');
+      logConsole('[QPDF Stream Load] Calling StreamingOpen...', 'info');
+      let handle;
+      try {
+        handle = FPDF.IPDF_QPDF_StreamingOpen(pdfData.length, readCallbackPtr, 0, null);
+      } catch (e) {
+        logConsole(`[QPDF Stream Load] StreamingOpen exception: ${e.message}`, 'error');
+        Module.removeFunction(readCallbackPtr);
+        throw e;
+      }
+      logConsole(`[QPDF Stream Load] StreamingOpen returned: ${handle}, reads: ${readCount}`, 'info');
+
+      if (!handle) {
+        Module.removeFunction(readCallbackPtr);
+        const errorPtr = FPDF.IPDF_QPDF_StreamingGetLastError();
+        const error = errorPtr ? Module.UTF8ToString(errorPtr) : 'Unknown error';
+        logConsole(`[QPDF Stream Load] Open failed: ${error}`, 'error');
+        throw new Error(`QPDF streaming open failed: ${error}`);
+      }
+      session.snapshot('DOCUMENT_LOADED');
+      logConsole('[QPDF Stream Load] Document opened successfully', 'success');
+
+      const pageCount = FPDF.IPDF_QPDF_StreamingGetPageCount(handle);
+      logConsole(`[QPDF Stream Load] Page count: ${pageCount}`, 'info');
+
+      const outputChunks = [];
+      const writeCallbackPtr = Module.addFunction(
+        (userData, dataPtr, size) => {
+          try {
+            writeCount++;
+            if (writeCount <= 3 || writeCount % 50 === 0) {
+              logConsole(`[QPDF Load Write] #${writeCount}: size=${size}`, 'info');
+            }
+            const chunk = new Uint8Array(Module.HEAPU8.buffer, dataPtr, size).slice();
+            outputChunks.push(chunk);
+            session.recordChunk(size);
+            return 1;
+          } catch (e) {
+            logConsole(`[QPDF Load Write] Error: ${e.message}`, 'error');
+            return 0;
+          }
+        },
+        'iiii'
+      );
+
+      session.snapshot('STREAMING_SAVE');
+      logConsole('[QPDF Stream Load] Calling StreamingSave...', 'info');
+      let saveResult;
+      try {
+        saveResult = FPDF.IPDF_QPDF_StreamingSave(handle, writeCallbackPtr, 0, 0);
+      } catch (e) {
+        logConsole(`[QPDF Stream Load] StreamingSave exception: ${e.message}`, 'error');
+        Module.removeFunction(writeCallbackPtr);
+        Module.removeFunction(readCallbackPtr);
+        FPDF.IPDF_QPDF_StreamingClose(handle);
+        throw e;
+      }
+      session.snapshot('SAVE_COMPLETE');
+      logConsole(`[QPDF Stream Load] StreamingSave returned: ${saveResult}, writes: ${writeCount}`, 'info');
+
+      Module.removeFunction(writeCallbackPtr);
+      Module.removeFunction(readCallbackPtr);
+      FPDF.IPDF_QPDF_StreamingClose(handle);
+
+      const totalSize = outputChunks.reduce((sum, c) => sum + c.length, 0);
+      session.snapshot('CLEANUP_COMPLETE');
+      logConsole(`[QPDF Stream Load] Success: ${totalSize} bytes output`, 'success');
+
+      return { pageCount, outputSize: totalSize, chunkCount: outputChunks.length };
+    }
+
+    // ==========================================================================
+    // OPERATION RUNNERS
+    // ==========================================================================
+
+    async function runOperation(key, name, mode, operationFn) {
+      if (!currentPdfData) {
+        logConsole('No PDF loaded', 'error');
+        return;
+      }
+
+      await clearMemoryBeforeOperation();
+
+      const row = document.querySelector(`#${key}-wasm`)?.closest('tr');
+      if (row) {
+        const statusCell = row.querySelector('.matrix-status');
+        statusCell.innerHTML = '<span class="matrix-status-dot running"></span> Running';
+      }
+
+      const session = new ProfilerSession(name, mode);
+
+      try {
+        session.start();
+        const outputData = await operationFn(currentPdfData, session);
+        const result = session.end();
+
+        sessionResults[key] = result;
+        updateMatrixRow(key, result);
+        renderSnapshots(result.snapshots);
+        drawLatencyGraph();
+
+        displayResults(name, mode, result, outputData || {});
+
+        return result;
+      } catch (error) {
+        session.snapshot('ERROR');
+        session.end();
+        logConsole(`Error in ${name}: ${error.message}`, 'error');
+
+        if (row) {
+          const statusCell = row.querySelector('.matrix-status');
+          statusCell.innerHTML = '<span class="matrix-status-dot error"></span> Error';
+        }
+        throw error;
+      }
+    }
+
+    // ==========================================================================
+    // INITIALIZATION
+    // ==========================================================================
+
+    async function initializePDFium() {
+      const statusIndicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+
+      try {
+        logConsole('Initializing PDFium WASM module...', 'info');
+
+        Module = await createPdfiumModule({
+          locateFile: (path) => {
+            if (path.endsWith('.wasm')) {
+              return 'auto_pqdfium_rs.wasm';
+            }
+            return path;
+          },
+          print: (text) => console.log('[PDFium]', text),
+          printErr: (text) => console.error('[PDFium Error]', text),
+        });
+
+        wasmInstrumentation.init(Module);
+        jsInstrumentation.sample('MODULE_LOADED');
+
+        FPDF.InitLibraryWithConfig = Module.cwrap('FPDF_InitLibraryWithConfig', '', ['number']);
+        FPDF.LoadMemDocument = Module.cwrap('FPDF_LoadMemDocument', 'number', ['number', 'number', 'string']);
+        FPDF.GetPageCount = Module.cwrap('FPDF_GetPageCount', 'number', ['number']);
+        FPDF.LoadPage = Module.cwrap('FPDF_LoadPage', 'number', ['number', 'number']);
+        FPDF.ClosePage = Module.cwrap('FPDF_ClosePage', '', ['number']);
+        FPDF.CloseDocument = Module.cwrap('FPDF_CloseDocument', '', ['number']);
+        FPDF.GetLastError = Module.cwrap('FPDF_GetLastError', 'number');
+        FPDF.Text_LoadPage = Module.cwrap('FPDFText_LoadPage', 'number', ['number']);
+        FPDF.Text_ClosePage = Module.cwrap('FPDFText_ClosePage', '', ['number']);
+        FPDF.Text_CountChars = Module.cwrap('FPDFText_CountChars', 'number', ['number']);
+        FPDF.Text_GetText = Module.cwrap('FPDFText_GetText', 'number', ['number', 'number', 'number', 'number']);
+
+        FPDF.IPDF_QPDF_PDFToJSON = Module.cwrap('IPDF_QPDF_PDFToJSON', 'number', ['number', 'number', 'number']);
+        FPDF.IPDF_QPDF_FreeString = Module.cwrap('IPDF_QPDF_FreeString', '', ['number']);
+        FPDF.IPDF_QPDF_StreamingOpen = Module.cwrap('IPDF_QPDF_StreamingOpen', 'number', ['number', 'number', 'number', 'string']);
+        FPDF.IPDF_QPDF_StreamingClose = Module.cwrap('IPDF_QPDF_StreamingClose', '', ['number']);
+        FPDF.IPDF_QPDF_StreamingSave = Module.cwrap('IPDF_QPDF_StreamingSave', 'number', ['number', 'number', 'number', 'number']);
+        FPDF.IPDF_QPDF_StreamingToJSON = Module.cwrap('IPDF_QPDF_StreamingToJSON', 'number', ['number', 'number', 'number', 'number', 'number', 'number']);
+        FPDF.IPDF_QPDF_StreamingGetPageCount = Module.cwrap('IPDF_QPDF_StreamingGetPageCount', 'number', ['number']);
+        FPDF.IPDF_QPDF_StreamingGetLastError = Module.cwrap('IPDF_QPDF_StreamingGetLastError', 'number', []);
+
+        const configSize = 20;
+        const configPtr = Module._malloc(configSize);
+        Module.setValue(configPtr + 0, 3, 'i32');
+        Module.setValue(configPtr + 4, 0, 'i32');
+        Module.setValue(configPtr + 8, 0, 'i32');
+        Module.setValue(configPtr + 12, 0, 'i32');
+        Module.setValue(configPtr + 16, 0, 'i32');
+        FPDF.InitLibraryWithConfig(configPtr);
+        Module._free(configPtr);
+
+        isInitialized = true;
+        statusIndicator.className = 'status-indicator ready';
+        statusText.textContent = 'Ready';
+        logConsole('PDFium initialized successfully', 'success');
+        logConsole(`Initial WASM memory: ${formatBytes(wasmInstrumentation.getStats().initial)}`, 'memory');
+
+        startContinuousMonitoring();
+
+        updateMetricsDisplay();
+        drawMemoryGraph();
+
+      } catch (error) {
+        statusIndicator.className = 'status-indicator error';
+        statusText.textContent = 'Failed';
+        logConsole(`Initialization failed: ${error.message}`, 'error');
+      }
+    }
+
+    async function reinitializeWASM() {
+      const btn = document.getElementById('btnReinitWasm');
+      const statusIndicator = document.getElementById('statusIndicator');
+      const statusText = document.getElementById('statusText');
+
+      btn.classList.add('loading');
+      btn.innerHTML = 'Reinitializing... <span class="btn-tag" style="background: var(--accent-orange); color: #000;">WAIT</span>';
+
+      try {
+        const memoryBefore = Module?.HEAP8?.buffer?.byteLength || 0;
+        logConsole(`[WASM Reset] Current memory: ${formatBytes(memoryBefore)}`, 'warn');
+
+        statusIndicator.className = 'status-indicator';
+        statusText.textContent = 'Reinitializing...';
+        isInitialized = false;
+
+        logConsole('[WASM Reset] Destroying old module...', 'warn');
+
+        Object.keys(FPDF).forEach(key => { FPDF[key] = null; });
+
+        Module = null;
+
+        if (typeof gc === 'function') {
+          gc();
         }
 
-        extractBtn.onclick = async () => {
-            if (!currentPdfBytes) return;
+        await new Promise(r => setTimeout(r, 100));
 
-            try {
-                extractBtn.disabled = true;
-                showStatus('Extracting text...', 'info');
-                output.innerHTML = '<div class="loading"></div> Processing...';
+        logConsole('[WASM Reset] Creating new module instance...', 'info');
 
-                const startTime = performance.now();
-                const text = await pdfium.extractText(currentPdfBytes);
-                const endTime = performance.now();
+        await initializePDFium();
 
-                output.textContent = text;
-                document.getElementById('textLength').textContent = text.length.toLocaleString();
-                document.getElementById('processTime').textContent = Math.round(endTime - startTime);
-                showStatus(`Extracted ${text.length} characters`, 'success');
-            } catch (error) {
-                output.textContent = 'Error: ' + error.message;
-                showStatus('Extraction failed: ' + error.message, 'error');
-            } finally {
-                extractBtn.disabled = false;
-            }
+        const memoryAfter = Module?.HEAP8?.buffer?.byteLength || 0;
+        const saved = memoryBefore - memoryAfter;
+
+        logConsole(`[WASM Reset] New memory: ${formatBytes(memoryAfter)}`, 'success');
+        if (saved > 0) {
+          logConsole(`[WASM Reset] Memory reclaimed: ${formatBytes(saved)} (${((saved/memoryBefore)*100).toFixed(1)}%)`, 'success');
+        } else {
+          logConsole(`[WASM Reset] Fresh module initialized (baseline memory)`, 'info');
+        }
+
+      } catch (error) {
+        logConsole(`[WASM Reset] Failed: ${error.message}`, 'error');
+        statusIndicator.className = 'status-indicator error';
+        statusText.textContent = 'Reset Failed';
+      } finally {
+        btn.classList.remove('loading');
+        btn.innerHTML = 'Reinitialize WASM <span class="btn-tag" style="background: var(--accent-red); color: #fff;">RESET</span>';
+      }
+    }
+
+    // ==========================================================================
+    // EVENT HANDLERS
+    // ==========================================================================
+
+    document.addEventListener('DOMContentLoaded', () => {
+      initializePDFium();
+
+      const fileDrop = document.getElementById('fileDrop');
+      const fileInput = document.getElementById('pdfFile');
+
+      fileDrop.addEventListener('click', () => fileInput.click());
+
+      fileDrop.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileDrop.classList.add('dragover');
+      });
+
+      fileDrop.addEventListener('dragleave', () => {
+        fileDrop.classList.remove('dragover');
+      });
+
+      fileDrop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileDrop.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFile(e.target.files[0]);
+        }
+      });
+
+      async function handleFile(file) {
+        if (!file.type.includes('pdf')) {
+          logConsole('Invalid file type. Please select a PDF.', 'error');
+          return;
+        }
+
+        currentFileName = file.name;
+        const arrayBuffer = await file.arrayBuffer();
+        currentPdfData = new Uint8Array(arrayBuffer);
+
+        document.getElementById('fileInfo').style.display = 'block';
+        document.getElementById('fileName').textContent = file.name;
+        document.getElementById('fileSize').textContent = formatBytes(file.size);
+
+        document.querySelectorAll('.btn-group .btn').forEach(btn => {
+          if (btn.id !== 'btnClearResults' && btn.id !== 'btnExportData') {
+            btn.disabled = false;
+          }
+        });
+
+        logConsole(`Loaded: ${file.name} (${formatBytes(file.size)})`, 'success');
+
+        wasmInstrumentation.sample('PDF_LOADED_TO_JS');
+        jsInstrumentation.sample('PDF_LOADED_TO_JS');
+        updateMetricsDisplay();
+      }
+
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          tab.classList.add('active');
+          document.getElementById(`panel-${tab.dataset.tab}`).classList.add('active');
+        });
+      });
+
+      document.getElementById('btnPdfiumExtractNormal').addEventListener('click', () =>
+        runOperation('pdfium-extract-normal', 'PDFium Extract', 'normal', pdfiumExtractNormal));
+
+      document.getElementById('btnPdfiumExtractStream').addEventListener('click', () =>
+        runOperation('pdfium-extract-stream', 'PDFium Extract', 'streaming', pdfiumExtractStreaming));
+
+      document.getElementById('btnPdfiumLoadNormal').addEventListener('click', () =>
+        runOperation('pdfium-load-normal', 'PDFium Load/Save', 'normal', pdfiumLoadNormal));
+
+      document.getElementById('btnPdfiumLoadStream').addEventListener('click', () =>
+        runOperation('pdfium-load-stream', 'PDFium Load/Save', 'streaming', pdfiumLoadStreaming));
+
+      document.getElementById('btnQpdfJsonNormal').addEventListener('click', () =>
+        runOperation('qpdf-json-normal', 'QPDF JSON', 'normal', qpdfJsonNormal));
+
+      document.getElementById('btnQpdfJsonStream').addEventListener('click', () =>
+        runOperation('qpdf-json-stream', 'QPDF JSON', 'streaming', qpdfJsonStreaming));
+
+      document.getElementById('btnQpdfLoadStream').addEventListener('click', () =>
+        runOperation('qpdf-load-stream', 'QPDF Load/Save', 'streaming', qpdfLoadStreaming));
+
+      document.getElementById('btnRunAll').addEventListener('click', async () => {
+        if (!currentPdfData) {
+          logConsole('No PDF loaded', 'error');
+          return;
+        }
+
+        logConsole('Running all comparisons (with WASM reset before each)...', 'info');
+
+        const operations = [
+          ['pdfium-extract-normal', 'PDFium Extract', 'normal', pdfiumExtractNormal],
+          ['pdfium-extract-stream', 'PDFium Extract', 'streaming', pdfiumExtractStreaming],
+          ['pdfium-load-normal', 'PDFium Load/Save', 'normal', pdfiumLoadNormal],
+          ['pdfium-load-stream', 'PDFium Load/Save', 'streaming', pdfiumLoadStreaming],
+          ['qpdf-json-normal', 'QPDF JSON', 'normal', qpdfJsonNormal],
+          ['qpdf-json-stream', 'QPDF JSON', 'streaming', qpdfJsonStreaming]
+        ];
+
+        for (const [key, name, mode, fn] of operations) {
+          try {
+            logConsole(`[Compare] Resetting WASM before ${name} (${mode})...`, 'info');
+            await reinitializeWASM();
+            await new Promise(r => setTimeout(r, 500));
+
+            await runOperation(key, name, mode, fn);
+            await new Promise(r => setTimeout(r, 100));
+          } catch (e) {
+            logConsole(`Skipping ${name} (${mode}) due to error`, 'warn');
+          }
+        }
+
+        logConsole('All comparisons complete', 'success');
+      });
+
+      document.getElementById('btnClearResults').addEventListener('click', () => {
+        Object.keys(sessionResults).forEach(key => delete sessionResults[key]);
+
+        document.querySelectorAll('.matrix-table td[id]').forEach(td => {
+          td.textContent = '--';
+          td.className = '';
+        });
+        document.querySelectorAll('.matrix-status').forEach(status => {
+          status.innerHTML = '<span class="matrix-status-dot pending"></span> Pending';
+        });
+
+        document.getElementById('snapshotsBody').innerHTML =
+          '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Run an operation to see snapshots</div>';
+
+        document.getElementById('consoleOutput').innerHTML =
+          '<div class="console-line info">[System] Results cleared</div>';
+
+        logConsole('Results cleared', 'info');
+      });
+
+      document.getElementById('btnClearOutput').addEventListener('click', () => {
+        document.getElementById('resultsContent').innerHTML =
+          '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Output cleared</div>';
+        document.getElementById('resultsSummary').style.display = 'none';
+        document.getElementById('resultOperationName').textContent = '--';
+        lastOperationOutput = '';
+        logConsole('Output cleared', 'info');
+      });
+
+      document.getElementById('btnCopyOutput').addEventListener('click', async () => {
+        if (!lastOperationOutput) {
+          logConsole('No output to copy', 'warn');
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(lastOperationOutput);
+          logConsole(`Copied ${formatBytes(lastOperationOutput.length)} to clipboard`, 'success');
+
+          const btn = document.getElementById('btnCopyOutput');
+          const originalText = btn.textContent;
+          btn.textContent = 'Copied!';
+          btn.style.background = 'var(--accent-green)';
+          btn.style.color = '#000';
+          setTimeout(() => {
+            btn.textContent = originalText;
+            btn.style.background = '';
+            btn.style.color = '';
+          }, 1500);
+        } catch (error) {
+          logConsole(`Failed to copy: ${error.message}`, 'error');
+        }
+      });
+
+      document.getElementById('btnClearSnapshots').addEventListener('click', () => {
+        document.getElementById('snapshotsBody').innerHTML =
+          '<div style="padding: 20px; text-align: center; color: var(--text-muted);">Snapshots cleared</div>';
+      });
+
+      document.getElementById('btnExportData').addEventListener('click', () => {
+        const data = {
+          timestamp: new Date().toISOString(),
+          fileName: currentFileName,
+          fileSize: currentPdfData?.length || 0,
+          wasmStats: wasmInstrumentation.getStats(),
+          jsStats: jsInstrumentation.getStats(),
+          operations: sessionResults,
+          monitoringSamples: {
+            wasm: monitoringSamples.wasm.slice(-100),
+            js: monitoringSamples.js.slice(-100)
+          }
         };
 
-        jsonBtn.onclick = async () => {
-            if (!currentPdfBytes) return;
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `profiler-export-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
 
-            try {
-                jsonBtn.disabled = true;
-                showStatus('Converting to JSON...', 'info');
-                output.innerHTML = '<div class="loading"></div> Processing...';
+        logConsole('Data exported', 'success');
+      });
 
-                const startTime = performance.now();
-                const json = await pdfium.pdfToJson(currentPdfBytes);
-                const endTime = performance.now();
+      document.getElementById('btnReinitWasm').addEventListener('click', () => {
+        reinitializeWASM();
+      });
 
-                const jsonStr = JSON.stringify(json, null, 2);
-                output.textContent = jsonStr;
-                document.getElementById('textLength').textContent = jsonStr.length.toLocaleString();
-                document.getElementById('processTime').textContent = Math.round(endTime - startTime);
-                showStatus('JSON conversion complete', 'success');
-            } catch (error) {
-                output.textContent = 'Error: ' + error.message;
-                showStatus('Conversion failed: ' + error.message, 'error');
-            } finally {
-                jsonBtn.disabled = false;
-            }
-        };
-
-        // Initialize on load
-        window.onload = initPdfium;
-
-        // Cleanup on unload
-        window.onbeforeunload = () => {
-            if (pdfium) {
-                pdfium.cleanup();
-            }
-        };
-    </script>
+      window.addEventListener('resize', () => {
+        drawMemoryGraph();
+        drawLatencyGraph();
+      });
+    });
+  </script>
 </body>
 </html>
