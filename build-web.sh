@@ -57,13 +57,13 @@ emcc target/wasm32-unknown-emscripten/release/libauto_pqdfium_rs.a \
     -sERROR_ON_UNDEFINED_SYMBOLS=0 \
     -sALLOW_MEMORY_GROWTH=1 \
     -sALLOW_TABLE_GROWTH=1 \
-    -sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_pdfium_wasm_load_custom_document,_pdfium_wasm_save_as_copy_custom,_FPDF_GetPageCount,_FPDF_CloseDocument,_IPDF_StreamingIO_GetPageCount,_IPDF_StreamingIO_GetPageSize,_IPDF_StreamingIO_GetPageText,_IPDF_StreamingIO_RenderPage,_IPDF_StreamingIO_FreeString,_malloc,_free \
-    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,writeArrayToMemory,addFunction,removeFunction,HEAPU8 \
-    -sINITIAL_MEMORY=67108864 \
+    -sEXPORTED_FUNCTIONS=_pdfium_wasm_initialize,_pdfium_wasm_extract_text,_pdfium_wasm_pdf_to_json,_pdfium_wasm_free_string,_pdfium_wasm_cleanup,_pdfium_wasm_load_custom_document,_pdfium_wasm_save_as_copy_custom,_FPDF_InitLibraryWithConfig,_FPDF_LoadMemDocument,_FPDF_GetPageCount,_FPDF_LoadPage,_FPDF_ClosePage,_FPDF_CloseDocument,_FPDFText_LoadPage,_FPDFText_ClosePage,_FPDFText_CountChars,_FPDFText_GetText,_IPDF_StreamingIO_LoadDocument,_IPDF_StreamingIO_SaveWithCallback,_IPDF_StreamingIO_GetPageCount,_IPDF_StreamingIO_GetPageSize,_IPDF_StreamingIO_GetPageText,_IPDF_StreamingIO_RenderPage,_IPDF_StreamingIO_FreeString,_IPDF_QPDF_PDFToJSON,_IPDF_QPDF_FreeString,_IPDF_QPDF_StreamingOpen,_IPDF_QPDF_StreamingClose,_IPDF_QPDF_StreamingSave,_IPDF_QPDF_StreamingToJSON,_IPDF_QPDF_StreamingGetPageCount,_IPDF_QPDF_StreamingGetPDFVersion,_IPDF_QPDF_StreamingIsEncrypted,_IPDF_QPDF_StreamingIsLinearized,_IPDF_QPDF_StreamingGetLastError,_IPDF_QPDF_StreamingFreeString,_IPDF_QPDF_StreamingFreeBuffer,_malloc,_free \
+    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,stringToUTF8,lengthBytesUTF8,getValue,setValue,writeArrayToMemory,addFunction,removeFunction,HEAP8,HEAPU8,HEAP16,HEAPU16,HEAP32,HEAPU32,HEAPF32,HEAPF64 \
+    -sINITIAL_MEMORY=16777216 \
     -sMODULARIZE=1 \
     -sEXPORT_NAME=createPdfiumModule \
     -sENVIRONMENT=web \
-    -O3 2>&1 | grep -v "warning:" || true
+    -O0 2>&1 | grep -v "warning:" || true
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✓${NC} Emscripten linking complete"

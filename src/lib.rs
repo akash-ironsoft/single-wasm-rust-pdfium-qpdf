@@ -13,6 +13,10 @@ mod ffi {
     #[allow(non_camel_case_types)]
     pub type FPDF_TEXTPAGE = *mut c_void;
 
+    // Opaque QPDF streaming handle
+    #[allow(non_camel_case_types)]
+    pub type QPDF_STREAM_HANDLE = *mut c_void;
+
     // PDFium config structure
     #[repr(C)]
     #[allow(non_snake_case)]
@@ -90,6 +94,60 @@ mod ffi {
             out_size: *mut c_ulong,
         ) -> *mut c_uchar;
         pub fn IPDF_StreamingIO_FreeString(ptr: *mut c_void);
+
+        // ============================================================================
+        // QPDF Streaming I/O API (from ipdf_qpdf_streaming.h)
+        // ============================================================================
+
+        // Document Loading (Streaming Input)
+        pub fn IPDF_QPDF_StreamingOpen(
+            file_size: c_int,
+            read_callback: Option<
+                unsafe extern "C" fn(*mut c_void, c_int, *mut c_uchar, c_int) -> c_int,
+            >,
+            user_data: *mut c_void,
+            password: *const c_char,
+        ) -> QPDF_STREAM_HANDLE;
+
+        // Close streaming document
+        pub fn IPDF_QPDF_StreamingClose(handle: QPDF_STREAM_HANDLE);
+
+        // Document Saving (Streaming Output)
+        pub fn IPDF_QPDF_StreamingSave(
+            handle: QPDF_STREAM_HANDLE,
+            write_callback: Option<
+                unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int,
+            >,
+            user_data: *mut c_void,
+            flags: c_int,
+        ) -> c_int;
+
+        // JSON Conversion (Streaming Both Input and Output)
+        pub fn IPDF_QPDF_StreamingToJSON(
+            file_size: c_int,
+            read_callback: Option<
+                unsafe extern "C" fn(*mut c_void, c_int, *mut c_uchar, c_int) -> c_int,
+            >,
+            read_user_data: *mut c_void,
+            json_version: c_int,
+            write_callback: Option<
+                unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int,
+            >,
+            write_user_data: *mut c_void,
+        ) -> c_int;
+
+        // Document Information (Query Operations)
+        pub fn IPDF_QPDF_StreamingGetPageCount(handle: QPDF_STREAM_HANDLE) -> c_int;
+        pub fn IPDF_QPDF_StreamingGetPDFVersion(handle: QPDF_STREAM_HANDLE) -> *mut c_char;
+        pub fn IPDF_QPDF_StreamingIsEncrypted(handle: QPDF_STREAM_HANDLE) -> c_int;
+        pub fn IPDF_QPDF_StreamingIsLinearized(handle: QPDF_STREAM_HANDLE) -> c_int;
+
+        // Error Handling
+        pub fn IPDF_QPDF_StreamingGetLastError() -> *const c_char;
+
+        // Memory Management
+        pub fn IPDF_QPDF_StreamingFreeString(str: *mut c_char);
+        pub fn IPDF_QPDF_StreamingFreeBuffer(buffer: *mut c_void);
     }
 
     // Type aliases for better readability
@@ -97,6 +155,12 @@ mod ffi {
         Option<unsafe extern "C" fn(*mut c_void, c_ulong, *mut c_uchar, c_ulong) -> c_int>;
     pub type WriteBlockCallback =
         Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_ulong) -> c_int>;
+
+    // QPDF streaming callback types (uses c_int for WASM32 compatibility)
+    pub type QPDFReadBlockCallback =
+        Option<unsafe extern "C" fn(*mut c_void, c_int, *mut c_uchar, c_int) -> c_int>;
+    pub type QPDFWriteBlockCallback =
+        Option<unsafe extern "C" fn(*mut c_void, *const c_void, c_int) -> c_int>;
 }
 
 static INIT: Once = Once::new();
@@ -395,3 +459,25 @@ pub unsafe extern "C" fn pdfium_wasm_save_as_copy_custom(
     // Call PDFium's streaming save function
     ffi::IPDF_StreamingIO_SaveWithCallback(document, write_block_callback, user_data, flags)
 }
+
+// ============================================================================
+// QPDF Streaming I/O Functions
+// ============================================================================
+//
+// NOTE: QPDF streaming functions (IPDF_QPDF_Streaming*) are exported directly
+// from libpdfium.a via the EXPORTED_FUNCTIONS list in build-web.sh.
+// No Rust wrappers needed - they would cause naming conflicts.
+//
+// Available functions (called directly from JavaScript):
+// - IPDF_QPDF_StreamingOpen
+// - IPDF_QPDF_StreamingClose
+// - IPDF_QPDF_StreamingSave
+// - IPDF_QPDF_StreamingToJSON
+// - IPDF_QPDF_StreamingGetPageCount
+// - IPDF_QPDF_StreamingGetPDFVersion
+// - IPDF_QPDF_StreamingIsEncrypted
+// - IPDF_QPDF_StreamingIsLinearized
+// - IPDF_QPDF_StreamingGetLastError
+// - IPDF_QPDF_StreamingFreeString
+// - IPDF_QPDF_StreamingFreeBuffer
+// ============================================================================
